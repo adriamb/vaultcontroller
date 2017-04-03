@@ -7,6 +7,7 @@ contract ProjectBalancer is Owned {
     struct Authorization {
         uint idx;  // address in  the array relative to 1
         uint activationTime;
+        string name;
     }
 
     struct Project {
@@ -100,9 +101,7 @@ contract ProjectBalancer is Owned {
         mainVault.authorizeSpender(
             address(this),
             "Project Balancer",
-            0x0,
-            0x0,
-            new bytes(0)
+            0x0
         );
     }
 
@@ -152,9 +151,7 @@ contract ProjectBalancer is Owned {
         project.vault.authorizeSpender(
             address(this),
             "Project Balancer",
-            0x0,
-            0x0,
-            new bytes(0)
+            bytes32(idProject)
         );
         project.dailyLimit = _dailyLimit;
         project.dailyTransactions = _dailyTransactions;
@@ -266,7 +263,6 @@ contract ProjectBalancer is Owned {
         if (_idProject >= projects.length) throw;
         Project project = projects[_idProject];
         uint projectBalance = project.vault.getBalance();
-        if (projectBalance >= project.bottomThreshold) return;
         if (projectBalance < project.bottomThreshold) {
             if (checkMainTransfer(address(project.vault), project.topThreshold - projectBalance)) {
                 mainVault.authorizePayment(
@@ -332,31 +328,43 @@ contract ProjectBalancer is Owned {
     function authorizeRecipient(
         uint _idProject,
         address _recipient,
-        bool _authorize
+        string _name
     ) onlyProjectAdmin(_idProject) {
         if (_idProject >= projects.length) throw;
         Project project = projects[_idProject];
 
         Authorization a = project.authorizations[_recipient];
-        if (_authorize) {
-            if ( a.idx > 0) return; // It is already authorizedRecipients
-            a.activationTime = now + project.whitelistTimelock;
-            a.idx = ++project.authorizationAddrs.length;
-            project.authorizationAddrs[a.idx - 1] = _recipient;
-        } else {
-            if (a.idx == 0) return; // It is not authorized
-            address lastRecipient =
-              project.authorizationAddrs[project.authorizationAddrs.length - 1];
-            Authorization lastA = project.authorizations[lastRecipient];
+        if ( a.idx > 0) return; // It is already authorizedRecipients
+        a.activationTime = now + project.whitelistTimelock;
+        a.idx = ++project.authorizationAddrs.length;
+        a.name = _name;
+        project.authorizationAddrs[a.idx - 1] = _recipient;
+        AuthorizedRecipient(_idProject, _recipient);
+    }
 
-            lastA.idx = a.idx;
-            project.authorizationAddrs[a.idx-1] = lastRecipient;
+    function unauthorizeRecipient(
+        uint _idProject,
+        address _recipient
+    ) onlyProjectAdmin(_idProject) {
+        if (_idProject >= projects.length) throw;
+        Project project = projects[_idProject];
 
-            project.authorizationAddrs.length --;
+        Authorization a = project.authorizations[_recipient];
+        if (a.idx == 0) return; // It is not authorized
+        address lastRecipient =
+          project.authorizationAddrs[project.authorizationAddrs.length - 1];
+        Authorization lastA = project.authorizations[lastRecipient];
 
-            a.idx = 0;
-            a.activationTime = 0;
-        }
+        lastA.idx = a.idx;
+        project.authorizationAddrs[a.idx-1] = lastRecipient;
+
+        project.authorizationAddrs.length --;
+
+        a.idx = 0;
+        a.activationTime = 0;
+        a.name = "";
+
+        UnauthorizedRecipient(_idProject, _recipient);
     }
 
 //////
@@ -386,7 +394,7 @@ contract ProjectBalancer is Owned {
         }
 
         if (mainAccAmountInDay + _amount > mainDailyLimit) return false;
-        if (mainAccTxsInDay >= mainAccTxsInDay) return false;
+        if (mainAccTxsInDay >= mainDailyTransactions) return false;
         if (_amount > mainTransactionLimit) return false;
         if (timeSinceStart >= windowTimeLength) return false;
 
@@ -416,7 +424,7 @@ contract ProjectBalancer is Owned {
         }
 
         if (project.accAmountInDay + _amount > project.dailyLimit) return false;
-        if (project.accTxsInDay >= project.accTxsInDay) return false;
+        if (project.accTxsInDay >= project.dailyTransactions) return false;
         if (_amount > project.transactionLimit) return false;
         if (timeSinceStart >= windowTimeLength) return false;
 
@@ -444,7 +452,8 @@ contract ProjectBalancer is Owned {
         _balance = project.vault.getBalance();
     }
 
-    event AuthorizedRecipient(uint indexed idProject, address indexed recipient, bool authorided);
+    event AuthorizedRecipient(uint indexed idProject, address indexed recipient);
+    event UnauthorizedRecipient(uint indexed idProject, address indexed recipient);
     event Payment(uint indexed idProject, address indexed recipient, bytes32 indexed reference, uint amount);
     event NewProject(uint indexed idProject);
     event ProjectCancel(uint indexed idProject);
