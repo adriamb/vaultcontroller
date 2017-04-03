@@ -4,57 +4,68 @@ import "../node_modules/vaultcontract/contracts/Vault.sol";
 
 contract ProjectBalancer is Owned {
 
+    /// @dev mapping of the transactions that have been authorized (not
+    ///  necessarily completed)
     struct Authorization {
-        uint idx;  // address in  the array relative to 1
-        uint activationTime;
+        uint idx;               // address in the map relative to 1
+        uint activationTime;    // UNIX time that the authorization occurred
         string name;
     }
-
+    /// @dev information on each project that the mainVault financially supports
     struct Project {
-        string name;
-        address admin;
-        Vault vault;
+        string name;        // project name for reference
+        address admin;      // address of project admin (usu a Multisig)
+        Vault vault;        // project's vault
 
-        uint dailyLimit;
-        uint dailyTransactions;
-        uint transactionLimit;
-        uint startHour;
-        uint endHour;
-        uint bottomThreshold;
-        uint topThreshold;
-        uint whitelistTimelock;
-        mapping (address => Authorization) authorizations;
-        address[] authorizationAddrs;
+        uint dailyLimit;        // max amount to be sent per day (in the smallest unit of `baseToken`)
+        uint dailyTransactions; // max number of txns per day
+        uint transactionLimit;  // max amount to be sent per txn (in the smallest unit of `baseToken`)
+        uint startHour;         // 0-86399 earliest moment the project can receive funds (in seconds after the start of the UTC day)
+        uint endHour;           // 1-86400 last moment the project can receive funds (in seconds after the start of the UTC day)
+        uint bottomThreshold;   // min amount to be held in a projects vault (in the smallest unit of `baseToken`)
+        uint topThreshold;      // max amount to be held in a projects vault (in the smallest unit of `baseToken`)
+        uint whitelistTimelock; // how long a recipient has to have been on a project's whitelist before they can receive funds (in seconds)
+        mapping (address => Authorization) authorizations; // list of authorized txns and the time they occurred
+        address[] authorizationAddrs;  // ______________TODO________________
 
-        bool canceled;
+        bool canceled;          // true if the project has been canceled
 
-        uint accTxsInDay;
-        uint accAmountInDay;
-        uint dayOfLastTx;
+        uint accTxsInDay;       // counter tracking how many txns have happened in the most recent day that there were txns
+        uint accAmountInDay;    // counter tracking how much has been transfered (in the smallest unit of `baseToken`) in the most recent day that there were txns
+        uint dayOfLastTx;       // var tracking the last day that a txn was made
     }
 
     Project[] projects;
 
-    Vault public mainVault;
+    Vault public mainVault;     // the vault that is funding all the project vaults
 
-    VaultFactory vaultFactory;
-    address baseToken;
-    address escapeHatchCaller;
-    address escapeHatchDestination;
-    uint mainDailyLimit;
-    uint mainDailyTransactions;
-    uint mainTransactionLimit;
-    uint mainStartHour;
-    uint mainEndHour;
-    uint mainVaultBottomThreshold;
-    uint mainVaultTopThreshold;
-    uint maxProjectDailyLimit;
-    uint maxProjectDailyTransactions;
-    uint maxProjectTransactionLimit;
-    uint maxProjectStartHour;
-    uint maxProjectEndHour;
-    uint maxProjectTopThreshold;
-    uint minProjectWhitelistTimelock;
+    VaultFactory vaultFactory;  // the contract that is used to create vaults
+
+    address baseToken;          // The address of the token that is used as a store value
+                                //  for this contract, 0x0 in case of ether. The token must have the ERC20
+                                //  standard `balanceOf()` and `transfer()` functions
+    address escapeHatchCaller;          // the address that can empty all the vaults if there is an issue
+    address escapeHatchDestination;     // the cold wallet
+
+    uint mainDailyLimit;        // max amount to be sent out of the `mainVault` per day (in the smallest unit of `baseToken`)
+    uint mainDailyTransactions; // max number of txns from the `mainVault` per day
+    uint mainTransactionLimit;  // max amount to be sent from the `mainVault` per txn (in the smallest unit of `baseToken`)
+    uint mainStartHour;         // 0-86399 earliest moment the `mainVault` can send funds (in seconds after the start of the UTC day)
+    uint mainEndHour;           // 1-86400 last moment the `mainVault` can send funds (in seconds after the start of the UTC day)
+    uint mainVaultBottomThreshold;      // min amount to be held in the `mainVault` (in the smallest unit of `baseToken`)
+    uint mainVaultTopThreshold;         // max amount to be held in the `mainVault` (in the smallest unit of `baseToken`)
+
+    uint maxProjectDailyLimit;          // absolute max amount to be sent out of any project's vault per day (in the smallest unit of `baseToken`)
+    uint maxProjectDailyTransactions;   // absolute max number of txns per day for any project's vault
+    uint maxProjectTransactionLimit;    // absolute max amount to be sent per txn for any project's vault (in the smallest unit of `baseToken`)
+    uint minProjectStartHour;           // 0-86399 absolute earliest moment any project can receive funds (in seconds after the start of the UTC day)
+    uint maxProjectEndHour;             // 1-86400 absolute last moment any project can receive funds (in seconds after the start of the UTC day)
+    uint maxProjectTopThreshold;        // absolute max amount to be held in a project's vault (in the smallest unit of `baseToken`)
+    uint minProjectWhitelistTimelock;   // absolute min number of seconds a recipient has to have been on a project's whitelist before they can receive funds
+
+/////////
+// Constructor
+/////////
 
     function ProjectBalancer(
         address _vaultFactory,
@@ -74,7 +85,7 @@ contract ProjectBalancer is Owned {
         uint _maxProjectTopThreshold,
         uint _minProjectWhitelistTimelock
     ) {
-        vaultFactory = VaultFactory(_vaultFactory);
+        vaultFactory = VaultFactory(_vaultFactory);     // vaultFactory is deployed first
         baseToken = _baseToken;
         escapeHatchCaller = _escapeHatchCaller;
         escapeHatchDestination = _escapeHatchDestination;
@@ -92,6 +103,7 @@ contract ProjectBalancer is Owned {
         minProjectWhitelistTimelock = _minProjectWhitelistTimelock;
     }
 
+    /// @notice creates the vault this is the second function cal that needs t be made
     function initialize() onlyOwner {
 
         if (address(mainVault) != 0) throw;
@@ -105,6 +117,8 @@ contract ProjectBalancer is Owned {
         );
     }
 
+    /// @dev The addresses preassigned as the Owner or Project Admin are the
+    ///  only addresses that can call a function with this modifier
     modifier onlyOwnerOrProjectAdmin(uint idProject) {
         if (    (idProject < projects.length)
              || (    (projects[idProject].admin != msg.sender)
@@ -113,6 +127,8 @@ contract ProjectBalancer is Owned {
         _;
     }
 
+    /// @dev The address preassigned as the Project Admin is the
+    ///  only address that can call a function with this modifier
     modifier onlyProjectAdmin(uint idProject) {
         if (   (idProject < projects.length)
             || (projects[idProject].admin != msg.sender))
@@ -120,13 +136,17 @@ contract ProjectBalancer is Owned {
         _;
     }
 
+    /// @notice `onlyOwner` Creates a new project vault with the specified parameters,
+    ///  will fail if any of the parameters are not within the ranges
+    ///  predetermined when deploying this contract
+    /// @return idProject The newly created Project's ID#
     function createProject(
         string _name,
         address _admin,
         uint _dailyLimit,
         uint _dailyTransactions,
         uint _transactionLimit,
-        uint _startHour,      // 0-86399   (Secons since start of the UTC day)
+        uint _startHour,      // 0-86399   (Seconds since start of the UTC day)
         uint _endHour,
         uint _topThreshold,
         uint _bottomThreshold,
@@ -135,6 +155,7 @@ contract ProjectBalancer is Owned {
         uint idProject = projects.length++;
         Project project = projects[idProject];
 
+        // checks
         if (_dailyLimit > maxProjectDailyLimit) throw;
         if (_dailyTransactions > maxProjectDailyTransactions) throw;
         if (_transactionLimit > maxProjectTransactionLimit) throw;
@@ -170,6 +191,8 @@ contract ProjectBalancer is Owned {
         return idProject;
     }
 
+    /// @notice `onlyOwner` Cancels a project and empties it's vault into the
+    ///  `escapeHatchDestination`
     function cancelProject(uint _idProject) onlyOwner {
 
         if (_idProject >= projects.length) throw;
@@ -181,17 +204,19 @@ contract ProjectBalancer is Owned {
             project.vault.authorizePayment(
               "CANCEL PROJECT",
               bytes32(_idProject),
-              address(mainVault),
+              address(escapeHatchDestination),
               project.vault.getBalance(),
               0
             );
             project.canceled = true;
             project.topThreshold = 0;
             project.bottomThreshold = 0;
-            ProjectCancel(_idProject);
+            ProjectCanceled(_idProject);
         }
     }
 
+    /// @notice `onlyOwner` Cancels all projects and empties the vaults into the
+    ///  `escapeHatchDestination`
     function cancelAll() onlyOwner {
         uint i;
         for (i=0; i<projects.length; i++) {
@@ -200,7 +225,9 @@ contract ProjectBalancer is Owned {
     }
 
 
-
+    /// @notice `onlyOwner` Changes the transaction limits to a project's vault,
+    ///  will fail if any of the parameters are not within the ranges
+    ///  predetermined when deploying this contract
     function setProjectLimits(
         uint _idProject,
         uint _dailyLimit,
@@ -230,6 +257,9 @@ contract ProjectBalancer is Owned {
         ProjectLimitsChanged(_idProject);
     }
 
+    /// @notice `onlyOwner` Changes the balance limits to a project's vault,
+    ///  will fail if any of the parameters are not within the ranges
+    ///  predetermined when deploying this contract
     function setProjectThresholds(
         uint _idProject,
         uint _topThreshold,
@@ -244,9 +274,11 @@ contract ProjectBalancer is Owned {
         project.bottomThreshold = _bottomThreshold;
         project.topThreshold = _topThreshold;
 
-        ProjectThresholsChanged(_idProject);
+        ProjectThresholdsChanged(_idProject);
     }
 
+    /// @notice `onlyOwnerOrProjectAdmin` Changes the Project Admin for a
+    ///  specified project's vault
     function setProjectAdmin(
         uint _idProject,
         address _newAdmin
@@ -255,10 +287,12 @@ contract ProjectBalancer is Owned {
         Project project = projects[_idProject];
 
         project.admin = _newAdmin;
-        ProjectAdminhanged(_idProject);
+        ProjectAdminChanged(_idProject);
     }
 
 
+    /// @notice `onlyOwnerOrProjectAdmin` Requests to Fill up the specified project's vault
+    ///  to the topThreshold from th `mainVault`
     function refillProject(uint _idProject) onlyOwnerOrProjectAdmin(_idProject) {
         if (_idProject >= projects.length) throw;
         Project project = projects[_idProject];
@@ -286,6 +320,9 @@ contract ProjectBalancer is Owned {
         }
     }
 
+    /// @notice `onlyProjectAdmin` Creates a new request to fund a project's vault,
+    ///  will fail if any of the parameters are not within the ranges
+    ///  predetermined when deploying this contract
     function newPayment(
         uint _idProject,
         string _name,
@@ -324,7 +361,12 @@ contract ProjectBalancer is Owned {
     }
 
 
-
+    /// @notice `onlyProjectAdmin` Adds `_recipient` to the whitelist of
+    ///  possible recipients, but the `_recipient` cannot receive until
+    ///  `whitelistTimelock` has passed
+    /// @param _idProject the ID# identifying the vault that will fund the `_recipient`
+    /// @param _recipient the address to be allowed to receive funds from the specified vault
+    /// @param _name Name of the recipient
     function authorizeRecipient(
         uint _idProject,
         address _recipient,
@@ -334,7 +376,7 @@ contract ProjectBalancer is Owned {
         Project project = projects[_idProject];
 
         Authorization a = project.authorizations[_recipient];
-        if ( a.idx > 0) return; // It is already authorizedRecipients
+        if ( a.idx > 0) return; // It is already on the whitelist
         a.activationTime = now + project.whitelistTimelock;
         a.idx = ++project.authorizationAddrs.length;
         a.name = _name;
@@ -350,11 +392,10 @@ contract ProjectBalancer is Owned {
         Project project = projects[_idProject];
 
         Authorization a = project.authorizations[_recipient];
-        if (a.idx == 0) return; // It is not authorized
+        if (a.idx == 0) return; // It is not authorized no need to remove
         address lastRecipient =
           project.authorizationAddrs[project.authorizationAddrs.length - 1];
         Authorization lastA = project.authorizations[lastRecipient];
-
         lastA.idx = a.idx;
         project.authorizationAddrs[a.idx-1] = lastRecipient;
 
@@ -371,15 +412,15 @@ contract ProjectBalancer is Owned {
 // Check Functions
 //////
 
-    uint mainAccTxsInDay;
-    uint mainAccAmountInDay;
-    uint mainDayOfLastTx;
+    uint mainAccTxsInDay;       // var tracking the daily number in the main vault
+    uint mainAccAmountInDay;    // var tracking the daily amount transferred in the main vault
+    uint mainDayOfLastTx;       // var tracking the day that the last txn happened
 
     function checkMainTransfer(address _dest, uint _amount) internal returns (bool) {
-        uint actualDay = now / 86400;
-        uint actualHour = now % actualDay;
+        uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
+        uint actualHour = now % actualDay;  //Number of seconds since midnight (UTC Timezone)
 
-        if (actualHour < mainStartHour) actualDay--;
+        if (actualHour < mainStartHour) actualDay--; // adjusts day to start at `mainStartHour`
 
         uint timeSinceStart = now - (actualDay * 86400 + mainStartHour);
 
@@ -406,8 +447,8 @@ contract ProjectBalancer is Owned {
 
 
     function checkProjectTransfer(Project storage project, address _dest, uint _amount) internal returns (bool) {
-        uint actualDay = now / 86400;
-        uint actualHour = now % actualDay;
+        uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
+        uint actualHour = now % actualDay;  //Number of seconds since midnight (UTC Timezone)
 
         if (actualHour < project.startHour) actualDay--;
 
@@ -442,6 +483,10 @@ contract ProjectBalancer is Owned {
 // Viewers
 /////
 
+    function numberOfProjects() constant returns (uint) {
+        return projects.length;
+    }
+
     function getProject(uint _idProject) returns (string _name, address _admin, address _vault, uint _balance) {
         if (_idProject >= projects.length) throw;
         Project project = projects[_idProject];
@@ -456,12 +501,12 @@ contract ProjectBalancer is Owned {
     event UnauthorizedRecipient(uint indexed idProject, address indexed recipient);
     event Payment(uint indexed idProject, address indexed recipient, bytes32 indexed reference, uint amount);
     event NewProject(uint indexed idProject);
-    event ProjectCancel(uint indexed idProject);
+    event ProjectCanceled(uint indexed idProject);
     event ProjectRefill(uint indexed idProject, uint amount);
 
     event ProjectLimitsChanged(uint indexed idProject);
-    event ProjectThresholsChanged(uint indexed idProject);
-    event ProjectAdminhanged(uint indexed idProject);
+    event ProjectThresholdsChanged(uint indexed idProject);
+    event ProjectAdminChanged(uint indexed idProject);
 }
 
 contract VaultFactory {

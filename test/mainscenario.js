@@ -63,8 +63,6 @@ describe("Normal Scenario Vault test", () => {
         projecBalancer.getState((err, st) => {
             assert.ifError(err);
             assert.equal(owner, st.owner);
-            assert.equal(escapeHatchCaller, st.escapeHatchCaller);
-            assert.equal(escapeHatchDestination, st.escapeHatchDestination);
             done();
         });
     }).timeout(60000000);
