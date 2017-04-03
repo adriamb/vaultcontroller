@@ -60,7 +60,7 @@ var ProjectBalancer = function () {
                             cb(err);return;
                         }
                         nProjects = res.toNumber();
-                        st.payments = [];
+                        st.projects = [];
                         cb1();
                     });
                 }, function (cb1) {
@@ -69,7 +69,7 @@ var ProjectBalancer = function () {
                             if (err) {
                                 cb(err);return;
                             }
-                            st.payments.push({
+                            st.projects.push({
                                 idProject: idProject,
                                 name: res[0],
                                 admin: res[1],

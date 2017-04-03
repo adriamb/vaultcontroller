@@ -51,19 +51,19 @@ describe("Normal Scenario Vault test", () => {
             maxProjectTransactionLimit: 5,
             maxProjectTopThreshold: ethConnector.web3.toWei(10),
             minProjectWhitelistTimelock: 86400,
-            verbose: true,
+            verbose: false,
         }, (err, _projecBalancer) => {
             assert.ifError(err);
             assert.ok(_projecBalancer.contract.address);
             projecBalancer = _projecBalancer;
             done();
         });
-    }).timeout(40000);
+    }).timeout(20000);
     it("Should check main ", (done) => {
         projecBalancer.getState((err, st) => {
             assert.ifError(err);
             assert.equal(owner, st.owner);
             done();
         });
-    }).timeout(60000000);
+    }).timeout(6000);
 });

@@ -33,7 +33,7 @@ export default class ProjectBalancer {
                     this.contract.numberOfProjects((err, res) => {
                         if (err) { cb(err); return; }
                         nProjects = res.toNumber();
-                        st.payments = [];
+                        st.projects = [];
                         cb1();
                     });
                 },
@@ -41,7 +41,7 @@ export default class ProjectBalancer {
                     async.eachSeries(_.range(0, nProjects), (idProject, cb2) => {
                         this.contract.getProject(idProject, (err, res) => {
                             if (err) { cb(err); return; }
-                            st.payments.push({
+                            st.projects.push({
                                 idProject,
                                 name: res[ 0 ],
                                 admin: res[ 1 ],

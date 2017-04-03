@@ -45,7 +45,7 @@ function deployExample(cb) {
                 maxProjectTransactionLimit: 5,
                 maxProjectTopThreshold: web3.toWei(10),
                 minProjectWhitelistTimelock: 86400,
-                verbose: true,
+                verbose: false,
             }, function(err, _projectBalancer) {
                 if (err) return err;
                 projectBalancer = _projectBalancer;
