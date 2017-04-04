@@ -58,8 +58,6 @@ contract ProjectBalancer is Owned {
     uint public maxProjectDailyLimit;          // absolute max amount to be sent out of any project's vault per day (in the smallest unit of `baseToken`)
     uint public maxProjectDailyTransactions;   // absolute max number of txns per day for any project's vault
     uint public maxProjectTransactionLimit;    // absolute max amount to be sent per txn for any project's vault (in the smallest unit of `baseToken`)
-    uint public minProjectStartHour;           // 0-86399 absolute earliest moment any project can receive funds (in seconds after the start of the UTC day)
-    uint public maxProjectEndHour;             // 1-86400 absolute last moment any project can receive funds (in seconds after the start of the UTC day)
     uint public maxProjectTopThreshold;        // absolute max amount to be held in a project's vault (in the smallest unit of `baseToken`)
     uint public minProjectWhitelistTimelock;   // absolute min number of seconds a recipient has to have been on a project's whitelist before they can receive funds
 
@@ -192,7 +190,7 @@ contract ProjectBalancer is Owned {
 
         // Do the initial transfer
 
-        refillProject(idProject);
+        rebalanceProjectHoldings(idProject);
         return idProject;
     }
 
@@ -298,7 +296,7 @@ contract ProjectBalancer is Owned {
 
     /// @notice `onlyOwnerOrProjectAdmin` Requests to Fill up the specified project's vault
     ///  to the topThreshold from th `mainVault`
-    function refillProject(uint _idProject) onlyOwnerOrProjectAdmin(_idProject) {
+    function rebalanceProjectHoldings(uint _idProject) onlyOwnerOrProjectAdmin(_idProject) {
         if (_idProject >= projects.length) throw;
         Project project = projects[_idProject];
         uint projectBalance = project.vault.getBalance();
@@ -322,6 +320,7 @@ contract ProjectBalancer is Owned {
               projectBalance - project.topThreshold,
               0
             );
+            ProjectOverflow(_idProject, projectBalance - project.topThreshold);
         }
     }
 
@@ -343,7 +342,7 @@ contract ProjectBalancer is Owned {
         if (checkProjectTransfer(project, _recipient, _amount)) {
 
             // We try to do a refill before and after the payment.
-            refillProject(_idProject);
+            rebalanceProjectHoldings(_idProject);
 
             uint collectedBefore = project.vault.totalCollected();
             project.vault.authorizePayment(
@@ -359,7 +358,7 @@ contract ProjectBalancer is Owned {
             // pending we just throw
             if (collectedBefore + _amount != collectedAfter ) throw;
 
-            refillProject(_idProject);
+            rebalanceProjectHoldings(_idProject);
         } else {
             throw;
         }
@@ -565,6 +564,7 @@ contract ProjectBalancer is Owned {
     event NewProject(uint indexed idProject);
     event ProjectCanceled(uint indexed idProject);
     event ProjectRefill(uint indexed idProject, uint amount);
+    event ProjectOverflow(uint indexed idProject, uint amount);
 
     event ProjectLimitsChanged(uint indexed idProject);
     event ProjectThresholdsChanged(uint indexed idProject);
