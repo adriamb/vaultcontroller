@@ -7,7 +7,7 @@ contract ProjectBalancer is Owned {
     /// @dev mapping of the transactions that have been authorized (not
     ///  necessarily completed)
     struct Authorization {
-        uint idx;               // address in the map relative to 1
+        uint idx;               // Index number used to avoid looping
         uint activationTime;    // UNIX time that the authorization occurred
         string name;
     }
@@ -26,7 +26,7 @@ contract ProjectBalancer is Owned {
         uint topThreshold;      // max amount to be held in a projects vault (in the smallest unit of `baseToken`)
         uint whitelistTimelock; // how long a recipient has to have been on a project's whitelist before they can receive funds (in seconds)
         mapping (address => Authorization) authorizations; // list of authorized txns and the time they occurred
-        address[] authorizationAddrs;  // ______________TODO________________
+        address[] authorizationAddrs;  // list of addresses mapped to the Authorization struct
 
         bool canceled;          // true if the project has been canceled
 
@@ -69,7 +69,8 @@ contract ProjectBalancer is Owned {
 /////////
 // Constructor
 /////////
-
+    /// @notice Deployed after deploying the Vault factory to create the
+    ///  ProjectBalancer Contract
     function ProjectBalancer(
         address _vaultFactory,
         address _baseToken,
@@ -88,6 +89,8 @@ contract ProjectBalancer is Owned {
         uint _maxProjectTopThreshold,
         uint _minProjectWhitelistTimelock
     ) {
+
+        // Initializing all the variables
         vaultFactory = VaultFactory(_vaultFactory);     // vaultFactory is deployed first
         baseToken = _baseToken;
         escapeHatchCaller = _escapeHatchCaller;
@@ -106,13 +109,16 @@ contract ProjectBalancer is Owned {
         minProjectWhitelistTimelock = _minProjectWhitelistTimelock;
     }
 
-    /// @notice creates the vault this is the second function cal that needs t be made
+    /// @notice `onlyOwner` Creates the mainVault; this is the third and final
+    ///  function call that needs to be made to finish deploying this system;
+    ///  this deploys the mainVault
     function initialize() onlyOwner {
 
         if (address(mainVault) != 0) throw;
 
         mainVault = Vault(vaultFactory.createVault(baseToken, escapeHatchCaller, escapeHatchDestination));
 
+        // Authorize this contract to spend money from this vault
         mainVault.authorizeSpender(
             address(this),
             "Project Balancer",
@@ -190,7 +196,7 @@ contract ProjectBalancer is Owned {
 
         // Do the initial transfer
 
-        rebalanceProjectHoldings(idProject);
+        refillProject(idProject);
         return idProject;
     }
 
@@ -296,7 +302,7 @@ contract ProjectBalancer is Owned {
 
     /// @notice `onlyOwnerOrProjectAdmin` Requests to Fill up the specified project's vault
     ///  to the topThreshold from th `mainVault`
-    function rebalanceProjectHoldings(uint _idProject) onlyOwnerOrProjectAdmin(_idProject) {
+    function refillProject(uint _idProject) onlyOwnerOrProjectAdmin(_idProject) {
         if (_idProject >= projects.length) throw;
         Project project = projects[_idProject];
         uint projectBalance = project.vault.getBalance();
@@ -320,7 +326,6 @@ contract ProjectBalancer is Owned {
               projectBalance - project.topThreshold,
               0
             );
-            ProjectOverflow(_idProject, projectBalance - project.topThreshold);
         }
     }
 
@@ -342,7 +347,7 @@ contract ProjectBalancer is Owned {
         if (checkProjectTransfer(project, _recipient, _amount)) {
 
             // We try to do a refill before and after the payment.
-            rebalanceProjectHoldings(_idProject);
+            refillProject(_idProject);
 
             uint collectedBefore = project.vault.totalCollected();
             project.vault.authorizePayment(
@@ -358,7 +363,7 @@ contract ProjectBalancer is Owned {
             // pending we just throw
             if (collectedBefore + _amount != collectedAfter ) throw;
 
-            rebalanceProjectHoldings(_idProject);
+            refillProject(_idProject);
         } else {
             throw;
         }
@@ -388,6 +393,10 @@ contract ProjectBalancer is Owned {
         AuthorizedRecipient(_idProject, _recipient);
     }
 
+    /// @notice `onlyProjectAdmin` Removes `_recipient` from the whitelist of
+    ///  possible recipients
+    /// @param _idProject The ID# identifying the vault that had authorized the `_recipient`
+    /// @param _recipient The address to be allowed to receive funds from the specified vault
     function unauthorizeRecipient(
         uint _idProject,
         address _recipient
@@ -408,8 +417,7 @@ contract ProjectBalancer is Owned {
         a.idx = 0;
         a.activationTime = 0;
         a.name = "";
-
-        UnauthorizedRecipient(_idProject, _recipient);
+        RemovedRecipientFromWhitelist(_idProject, _recipient);
     }
 
 //////
@@ -417,6 +425,8 @@ contract ProjectBalancer is Owned {
 //////
 
 
+    /// @notice Checks that the transaction limits in the mainVault are followed
+    /// called every time the mainVault sends `baseTokens` 
     function checkMainTransfer(address _dest, uint _amount) internal returns (bool) {
         uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
         uint actualHour = now % actualDay;  //Number of seconds since midnight (UTC Timezone)
@@ -429,29 +439,32 @@ contract ProjectBalancer is Owned {
                                         mainEndHour - mainStartHour :
                                         86400 + mainEndHour - mainStartHour;
 
+        // Resets the daily transfer counters
         if (mainDayOfLastTx < actualDay) {
             mainAccTxsInDay = 0;
             mainAccAmountInDay = 0;
             mainDayOfLastTx = actualDay;
         }
-
+        // Checks on the transaction limits
         if (mainAccAmountInDay + _amount > mainDailyLimit) return false;
         if (mainAccTxsInDay >= mainDailyTransactions) return false;
         if (_amount > mainTransactionLimit) return false;
         if (timeSinceStart >= windowTimeLength) return false;
 
+        // Counting daily transactions and total amount spent in one day
         mainAccAmountInDay += _amount;
         mainAccTxsInDay ++;
 
         return true;
     }
 
-
+    /// @notice Checks that the transaction limits in the mainVault are followed
+    /// called every time the mainVault sends `baseTokens` 
     function checkProjectTransfer(Project storage project, address _dest, uint _amount) internal returns (bool) {
         uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
         uint actualHour = now % actualDay;  //Number of seconds since midnight (UTC Timezone)
 
-        if (actualHour < project.startHour) actualDay--;
+        if (actualHour < project.startHour) actualDay--; // adjusts day to start at `mainStartHour`
 
         uint timeSinceStart = now - (actualDay * 86400 + project.startHour);
 
@@ -459,17 +472,20 @@ contract ProjectBalancer is Owned {
                                         project.endHour - project.startHour :
                                         86400 + project.endHour - project.startHour;
 
+        // Resets the daily transfer counters
         if (project.dayOfLastTx < actualDay) {
             project.accTxsInDay = 0;
             project.accAmountInDay = 0;
             project.dayOfLastTx = actualDay;
         }
 
+        // Checks on the transaction limits
         if (project.accAmountInDay + _amount > project.dailyLimit) return false;
         if (project.accTxsInDay >= project.dailyTransactions) return false;
         if (_amount > project.transactionLimit) return false;
         if (timeSinceStart >= windowTimeLength) return false;
 
+        // Checks that the recipient has waited out the `ProjectWhitelistTimelock`
         if ((project.authorizations[_dest].activationTime == 0) ||
             (project.authorizations[_dest].activationTime > now))
             return false;
@@ -484,10 +500,12 @@ contract ProjectBalancer is Owned {
 // Viewers
 /////
 
+    /// @notice Makes it easy to see how many projects are fed by the mainVault
     function numberOfProjects() constant returns (uint) {
         return projects.length;
     }
 
+    /// @notice Makes it easy to see the balance for each project
     function getProject(uint _idProject) constant returns (
         string _name,
         address _admin,
@@ -503,6 +521,7 @@ contract ProjectBalancer is Owned {
         _balance = project.vault.getBalance();
     }
 
+    /// @notice Makes it easy to see the limits for each project
     function getProjectLimits(uint _idProject) constant returns (
         uint _dailyLimit,
         uint _dailyTransactions,
@@ -522,6 +541,7 @@ contract ProjectBalancer is Owned {
         _whitelistTimelock = project.whitelistTimelock;
     }
 
+    /// @notice Makes it easy to see how many spenders are allowed in each project
     function getProjectNumberOfAuthorizations(uint _idProject) constant
     returns (uint) {
         if (_idProject >= projects.length) throw;
@@ -530,6 +550,7 @@ contract ProjectBalancer is Owned {
         return project.authorizationAddrs.length;
     }
 
+    /// @notice Makes it easy to see when a recipient will be able to receive funds
     function getProjectAuthorization(uint _idProject, uint _idx) constant
     returns (
             uint _activationTime,
@@ -545,6 +566,7 @@ contract ProjectBalancer is Owned {
         _name = project.authorizations[recipient].name;
     }
 
+    /// @notice Checks to see if a recipient is able to receive funds
     function isRecipientAuthorized(uint _idProject, address _recipient) constant
     returns (bool) {
         if (_idProject >= projects.length) throw;
@@ -557,20 +579,20 @@ contract ProjectBalancer is Owned {
         return true;
     }
 
-
+    // Events
     event AuthorizedRecipient(uint indexed idProject, address indexed recipient);
-    event UnauthorizedRecipient(uint indexed idProject, address indexed recipient);
+    event RemovedRecipientFromWhitelist(uint indexed idProject, address indexed recipient);
     event Payment(uint indexed idProject, address indexed recipient, bytes32 indexed reference, uint amount);
     event NewProject(uint indexed idProject);
     event ProjectCanceled(uint indexed idProject);
     event ProjectRefill(uint indexed idProject, uint amount);
-    event ProjectOverflow(uint indexed idProject, uint amount);
 
     event ProjectLimitsChanged(uint indexed idProject);
     event ProjectThresholdsChanged(uint indexed idProject);
     event ProjectAdminChanged(uint indexed idProject);
 }
 
+/// @notice Creates its own contract that is called when a new vault needs to be made
 contract VaultFactory {
     function createVault(address _baseToken, address _escapeHatchCaller, address _escapeHatchDestination) returns (address) {
         Vault mainVault = new Vault(_baseToken, _escapeHatchCaller, _escapeHatchDestination, 0,0,0,0);
