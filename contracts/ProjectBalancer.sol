@@ -349,7 +349,7 @@ contract ProjectBalancer is Owned {
             // We try to do a refill before and after the payment.
             refillProject(_idProject);
 
-            uint collectedBefore = project.vault.totalCollected();
+            uint collectedBefore = project.vault.totalSpent();
             project.vault.authorizePayment(
               _name,
               _reference,
@@ -357,7 +357,7 @@ contract ProjectBalancer is Owned {
               _amount,
               0
             );
-            uint collectedAfter = project.vault.totalCollected();
+            uint collectedAfter = project.vault.totalSpent();
 
             // We expect that the payments are inmediate, so if the payment is
             // pending we just throw
@@ -426,7 +426,7 @@ contract ProjectBalancer is Owned {
 
 
     /// @notice Checks that the transaction limits in the mainVault are followed
-    /// called every time the mainVault sends `baseTokens` 
+    /// called every time the mainVault sends `baseTokens`
     function checkMainTransfer(address _dest, uint _amount) internal returns (bool) {
         uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
         uint actualHour = now % actualDay;  //Number of seconds since midnight (UTC Timezone)
@@ -459,7 +459,7 @@ contract ProjectBalancer is Owned {
     }
 
     /// @notice Checks that the transaction limits in the mainVault are followed
-    /// called every time the mainVault sends `baseTokens` 
+    /// called every time the mainVault sends `baseTokens`
     function checkProjectTransfer(Project storage project, address _dest, uint _amount) internal returns (bool) {
         uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
         uint actualHour = now % actualDay;  //Number of seconds since midnight (UTC Timezone)

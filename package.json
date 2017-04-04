@@ -32,7 +32,7 @@
     "async": "^2.1.4",
     "lodash": "^4.17.4",
     "runethtx": "0.0.7",
-    "vaultcontract": "^0.3.0"
+    "vaultcontract": "^0.3.1"
   },
   "devDependencies": {
     "babel-core": "^6.22.1",
