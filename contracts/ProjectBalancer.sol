@@ -196,7 +196,7 @@ contract ProjectBalancer is Owned {
 
         // Do the initial transfer
 
-        refillProject(idProject);
+        rebalanceProjectHoldings(idProject);
         return idProject;
     }
 
@@ -302,7 +302,7 @@ contract ProjectBalancer is Owned {
 
     /// @notice `onlyOwnerOrProjectAdmin` Requests to Fill up the specified project's vault
     ///  to the topThreshold from th `mainVault`
-    function refillProject(uint _idProject) onlyOwnerOrProjectAdmin(_idProject) {
+    function rebalanceProjectHoldings(uint _idProject) onlyOwnerOrProjectAdmin(_idProject) {
         if (_idProject >= projects.length) throw;
         Project project = projects[_idProject];
         uint projectBalance = project.vault.getBalance();
@@ -347,7 +347,7 @@ contract ProjectBalancer is Owned {
         if (checkProjectTransfer(project, _recipient, _amount)) {
 
             // We try to do a refill before and after the payment.
-            refillProject(_idProject);
+            rebalanceProjectHoldings(_idProject);
 
             uint collectedBefore = project.vault.totalSpent();
             project.vault.authorizePayment(
@@ -363,7 +363,7 @@ contract ProjectBalancer is Owned {
             // pending we just throw
             if (collectedBefore + _amount != collectedAfter ) throw;
 
-            refillProject(_idProject);
+            rebalanceProjectHoldings(_idProject);
         } else {
             throw;
         }
