@@ -16,21 +16,21 @@ var _lodash2 = _interopRequireDefault(_lodash);
 
 var _runethtx = require("runethtx");
 
-var _ProjectBalancerSol = require("../contracts/ProjectBalancer.sol.js");
+var _ProjectControllerSol = require("../contracts/ProjectController.sol.js");
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
-var ProjectBalancer = function () {
-    function ProjectBalancer(web3, address) {
-        _classCallCheck(this, ProjectBalancer);
+var ProjectController = function () {
+    function ProjectController(web3, address) {
+        _classCallCheck(this, ProjectController);
 
         this.web3 = web3;
-        this.contract = this.web3.eth.contract(_ProjectBalancerSol.ProjectBalancerAbi).at(address);
+        this.contract = this.web3.eth.contract(_ProjectControllerSol.ProjectControllerAbi).at(address);
     }
 
-    _createClass(ProjectBalancer, [{
+    _createClass(ProjectController, [{
         key: "getState",
         value: function getState(_cb) {
             var _this = this;
@@ -103,11 +103,11 @@ var ProjectBalancer = function () {
         key: "deploy",
         value: function deploy(web3, opts, _cb) {
             return (0, _runethtx.asyncfunc)(function (cb) {
-                var projectBalancer = void 0;
+                var projectController = void 0;
                 var params = Object.assign({}, opts);
                 _async2.default.series([function (cb1) {
-                    params.abi = _ProjectBalancerSol.VaultFactoryAbi;
-                    params.byteCode = _ProjectBalancerSol.VaultFactoryByteCode;
+                    params.abi = _ProjectControllerSol.VaultFactoryAbi;
+                    params.byteCode = _ProjectControllerSol.VaultFactoryByteCode;
                     (0, _runethtx.deploy)(web3, params, function (err, _vaultFactory) {
                         if (err) {
                             cb1(err);
@@ -117,31 +117,42 @@ var ProjectBalancer = function () {
                         cb1();
                     });
                 }, function (cb1) {
-                    params.abi = _ProjectBalancerSol.ProjectBalancerAbi;
-                    params.byteCode = _ProjectBalancerSol.ProjectBalancerByteCode;
-                    (0, _runethtx.deploy)(web3, params, function (err, _projectBalancer) {
+                    params.abi = _ProjectControllerSol.ProjectControllerFactoryAbi;
+                    params.byteCode = _ProjectControllerSol.ProjectControllerFactoryByteCode;
+                    (0, _runethtx.deploy)(web3, params, function (err, _projectControllerFactory) {
                         if (err) {
                             cb1(err);
                             return;
                         }
-                        projectBalancer = new ProjectBalancer(web3, _projectBalancer.address);
+                        params.projectControllerFactory = _projectControllerFactory.address;
                         cb1();
                     });
                 }, function (cb1) {
-                    projectBalancer.initialize({}, cb1);
+                    params.abi = _ProjectControllerSol.ProjectControllerAbi;
+                    params.byteCode = _ProjectControllerSol.ProjectControllerByteCode;
+                    (0, _runethtx.deploy)(web3, params, function (err, _projectController) {
+                        if (err) {
+                            cb1(err);
+                            return;
+                        }
+                        projectController = new ProjectController(web3, _projectController.address);
+                        cb1();
+                    });
+                }, function (cb1) {
+                    projectController.initialize({}, cb1);
                 }], function (err) {
                     if (err) {
                         cb(err);
                         return;
                     }
-                    cb(null, projectBalancer);
+                    cb(null, projectController);
                 });
             }, _cb);
         }
     }]);
 
-    return ProjectBalancer;
+    return ProjectController;
 }();
 
-exports.default = ProjectBalancer;
+exports.default = ProjectController;
 module.exports = exports["default"];

@@ -8,7 +8,7 @@ const BigNumber = require("bignumber.js");
 const eth = web3.eth;
 const async = require("async");
 
-const ProjectBalancer = require("./dist/projectbalancer.js");
+const ProjectController = require("./dist/projectcontroller.js");
 
 var gcb = function(err, res) {
     if (err) {
@@ -18,38 +18,35 @@ var gcb = function(err, res) {
     }
 }
 
-var projectBalancer;
+var projectController;
 
 var owner = eth.accounts[0];
 var escapeHatchCaller = eth.accounts[1];
 var escapeHatchDestination = eth.accounts[2];
+var parentVault = eth.accounts[3];
 
 function deployExample(cb) {
     cb = cb || gcb;
     async.series([
         function(cb) {
-            ProjectBalancer.deploy(web3, {
+                ProjectController.deploy(web3, {
                 from: owner,
+                name: "Main Vault",
                 baseToken: 0,
                 escapeHatchCaller,
                 escapeHatchDestination,
-                mainDailyLimit: web3.toWei(100),
-                mainDailyTransactions: 5,
-                mainTransactionLimit: web3.toWei(10),
-                mainStartHour: 0,
-                mainEndHour: 86400,
-                mainVaultBottomThreshold: web3.toWei(300),
-                mainVaultTopThreshold: web3.toWei(500),
-                maxProjectDailyLimit: web3.toWei(10),
-                maxProjectDailyTransactions: web3.toWei(10),
-                maxProjectTransactionLimit: 5,
-                maxProjectTopThreshold: web3.toWei(10),
-                minProjectWhitelistTimelock: 86400,
+                parentProjectController: 0,
+                parentVault,
+                maxDailyLimit: web3.toWei(100),
+                maxDailyTransactions: 5,
+                maxTransactionLimit: web3.toWei(10),
+                maxTopThreshold: web3.toWei(500),
+                mintWhitelistTimelock: 86400,
                 verbose: false,
-            }, function(err, _projectBalancer) {
+            }, function(err, _projectController) {
                 if (err) return err;
-                projectBalancer = _projectBalancer;
-                console.log("Project Balancer: " + projectBalancer.contract.address);
+                projectController = _projectController;
+                console.log("Project Balancer: " + projectController.contract.address);
                 cb();
             });
         },

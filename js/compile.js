@@ -2,8 +2,8 @@ import ethConnector from "ethconnector";
 import path from "path";
 
 ethConnector.compile(
-    path.join(__dirname, "../contracts/ProjectBalancer.sol"),
-    path.join(__dirname, "../contracts/ProjectBalancer.sol.js"),
+    path.join(__dirname, "../contracts/ProjectController.sol"),
+    path.join(__dirname, "../contracts/ProjectController.sol.js"),
     (err) => {
         if (err) {
             console.log(err);

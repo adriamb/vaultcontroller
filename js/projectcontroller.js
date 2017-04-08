@@ -1,13 +1,13 @@
 import async from "async";
 import _ from "lodash";
 import { deploy, sendContractTx, asyncfunc } from "runethtx";
-import { ProjectBalancerAbi, ProjectBalancerByteCode, VaultFactoryAbi, VaultFactoryByteCode } from "../contracts/ProjectBalancer.sol.js";
+import { ProjectControllerAbi, ProjectControllerByteCode, ProjectControllerFactoryAbi, ProjectControllerFactoryByteCode, VaultFactoryAbi, VaultFactoryByteCode } from "../contracts/ProjectController.sol.js";
 
-export default class ProjectBalancer {
+export default class ProjectController {
 
     constructor(web3, address) {
         this.web3 = web3;
-        this.contract = this.web3.eth.contract(ProjectBalancerAbi).at(address);
+        this.contract = this.web3.eth.contract(ProjectControllerAbi).at(address);
     }
 
     getState(_cb) {
@@ -81,7 +81,7 @@ export default class ProjectBalancer {
 
     static deploy(web3, opts, _cb) {
         return asyncfunc((cb) => {
-            let projectBalancer;
+            let projectController;
             const params = Object.assign({}, opts);
             async.series([
                 (cb1) => {
@@ -97,19 +97,31 @@ export default class ProjectBalancer {
                     });
                 },
                 (cb1) => {
-                    params.abi = ProjectBalancerAbi;
-                    params.byteCode = ProjectBalancerByteCode;
-                    deploy(web3, params, (err, _projectBalancer) => {
+                    params.abi = ProjectControllerFactoryAbi;
+                    params.byteCode = ProjectControllerFactoryByteCode;
+                    deploy(web3, params, (err, _projectControllerFactory) => {
                         if (err) {
                             cb1(err);
                             return;
                         }
-                        projectBalancer = new ProjectBalancer(web3, _projectBalancer.address);
+                        params.projectControllerFactory = _projectControllerFactory.address;
                         cb1();
                     });
                 },
                 (cb1) => {
-                    projectBalancer.initialize({}, cb1);
+                    params.abi = ProjectControllerAbi;
+                    params.byteCode = ProjectControllerByteCode;
+                    deploy(web3, params, (err, _projectController) => {
+                        if (err) {
+                            cb1(err);
+                            return;
+                        }
+                        projectController = new ProjectController(web3, _projectController.address);
+                        cb1();
+                    });
+                },
+                (cb1) => {
+                    projectController.initialize({}, cb1);
                 },
             ],
             (err) => {
@@ -117,7 +129,7 @@ export default class ProjectBalancer {
                     cb(err);
                     return;
                 }
-                cb(null, projectBalancer);
+                cb(null, projectController);
             });
         }, _cb);
     }

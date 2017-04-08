@@ -3,7 +3,7 @@ import assert from "assert"; // node.js core module
 import async from "async";
 import path from "path";
 
-import ProjectBalancer from "../js/projectbalancer";
+import ProjectController from "../js/projectcontroller";
 
 describe("Normal Scenario Vault test", () => {
     let projecBalancer;
@@ -13,6 +13,7 @@ describe("Normal Scenario Vault test", () => {
     let securityGuard;
     let spender;
     let recipient;
+    let parentVault;
 
     before((done) => {
         ethConnector.init("testrpc", (err) => {
@@ -23,6 +24,7 @@ describe("Normal Scenario Vault test", () => {
             securityGuard = ethConnector.accounts[ 3 ];
             spender = ethConnector.accounts[ 4 ];
             recipient = ethConnector.accounts[ 5 ];
+            parentVault = ethConnector.accounts[ 6 ];
             done();
         });
     });
@@ -34,23 +36,19 @@ describe("Normal Scenario Vault test", () => {
         );
     }).timeout(20000); */
     it("should deploy all the contracts ", (done) => {
-        ProjectBalancer.deploy(ethConnector.web3, {
+        ProjectController.deploy(ethConnector.web3, {
             from: owner,
+            name: "Main Vault",
             baseToken: 0,
             escapeHatchCaller,
             escapeHatchDestination,
-            mainDailyLimit: ethConnector.web3.toWei(100),
-            mainDailyTransactions: 5,
-            mainTransactionLimit: ethConnector.web3.toWei(10),
-            mainStartHour: 0,
-            mainEndHour: 86400,
-            mainVaultBottomThreshold: ethConnector.web3.toWei(300),
-            mainVaultTopThreshold: ethConnector.web3.toWei(500),
-            maxProjectDailyLimit: ethConnector.web3.toWei(10),
-            maxProjectDailyTransactions: ethConnector.web3.toWei(10),
-            maxProjectTransactionLimit: 5,
-            maxProjectTopThreshold: ethConnector.web3.toWei(10),
-            minProjectWhitelistTimelock: 86400,
+            parentProjectController: 0,
+            parentVault,
+            maxDailyLimit: ethConnector.web3.toWei(100),
+            maxDailyTransactions: 5,
+            maxTransactionLimit: ethConnector.web3.toWei(10),
+            maxTopThreshold: ethConnector.web3.toWei(500),
+            mintWhitelistTimelock: 86400,
             verbose: false,
         }, (err, _projecBalancer) => {
             assert.ifError(err);
