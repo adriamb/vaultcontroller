@@ -75,8 +75,23 @@ contract ProjectController is Owned {
     uint public dayOfLastTx;       // var tracking the day that the last txn happened
 
 /////////
+// Modifiers
+/////////
+
+    /// @dev The addresses preassigned as the Owner or Project Admin are the
+    ///  only addresses that can call a function with this modifier
+    modifier onlyOwnerOrParent() {
+        if (    (msg.sender != owner)
+             && (msg.sender != address(parentProjectController)))
+           throw;
+        _;
+    }
+
+
+/////////
 // Constructor
 /////////
+
     /// @notice Deployed after deploying the Vault factory to create the
     ///  ProjectBalancer Contract
     function ProjectController(
@@ -120,6 +135,10 @@ contract ProjectController is Owned {
         whiteListTimelock = minWhiteListTimelock;
     }
 
+/////////
+// Public Methods
+/////////
+
     /// @notice `onlyOwner` Creates the mainVault; this is the third and final
     ///  function call that needs to be made to finish deploying this system;
     ///  this deploys the mainVault
@@ -141,14 +160,7 @@ contract ProjectController is Owned {
         }
     }
 
-    /// @dev The addresses preassigned as the Owner or Project Admin are the
-    ///  only addresses that can call a function with this modifier
-    modifier onlyOwnerOrParent() {
-        if (    (msg.sender != owner)
-             && (msg.sender != address(parentProjectController)))
-           throw;
-        _;
-    }
+
 
     /// @notice `onlyOwner` Creates a new project vault with the specified parameters,
     ///  will fail if any of the parameters are not within the ranges
