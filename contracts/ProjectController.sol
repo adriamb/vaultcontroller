@@ -116,7 +116,7 @@ contract ProjectController is Owned {
         startHour = 0;
         endHour = 86400;
         topThreshold = maxTopThreshold;
-        bottomThreshold = 0;
+        bottomThreshold = maxTopThreshold/10;
         whiteListTimelock = minWhiteListTimelock;
     }
 
@@ -188,13 +188,13 @@ contract ProjectController is Owned {
             _minWhiteListTimelock
         ));
 
-        pc.initialize();
 
         childProjects[childProjects.length ++] = pc;
         addr2project[address(pc)] = childProjects.length;
 
         NewProject(childProjects.length -1);
 
+        pc.initialize();
         pc.changeOwner(_admin);
 
         return childProjects.length;
@@ -282,6 +282,8 @@ contract ProjectController is Owned {
 
     /// @notice `onlyOwnerOrProjectAdmin` Requests to Fill up the specified project's vault
     ///  to the topThreshold from th `mainVault`
+
+    uint public test1;
 
     function refillMe() {
         if (canceled) throw;
@@ -476,6 +478,7 @@ contract ProjectController is Owned {
                                         86400 + endHour - startHour;
 
         if (canceled) return false;
+
         // Resets the daily transfer counters
         if (dayOfLastTx < actualDay) {
             accTxsInDay = 0;
