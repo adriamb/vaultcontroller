@@ -1,6 +1,7 @@
 Add splitover coldstorage automation.
 
-CancelAll can be called by scapeHatch  -> ScapeHatchAll
+CancelAll can be called by scapeHatch  -> EscapeHatchAll
+Let only hard limits. (Remove that the admin can change the limits)
 
 
 

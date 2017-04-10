@@ -2,7 +2,7 @@ pragma solidity ^0.4.6;
 
 import "../node_modules/vaultcontract/contracts/Vault.sol";
 
-contract ProjectController is Owned {
+contract VaultController is Owned {
 
     struct Recipient {
         uint activationTime;
@@ -33,19 +33,19 @@ contract ProjectController is Owned {
     Spender[] public spenders;
     mapping(address => uint) addr2spender;
 
-    ProjectController[] public childProjects;
+    VaultController[] public childProjects;
     mapping(address => uint) addr2project;
 
     string public name;
     bool canceled;
 
 
-    ProjectController public parentProjectController;
+    VaultController public parentVaultController;
     address public parentVault;
     Vault public mainVault;     // the vault that is funding all the project vaults
 
     VaultFactory public vaultFactory;  // the contract that is used to create vaults
-    ProjectControllerFactory public projectControllerFactory;
+    VaultControllerFactory public vaultControllerFactory;
 
     address public baseToken;          // The address of the token that is used as a store value
                                 //  for this contract, 0x0 in case of ether. The token must have the ERC20
@@ -62,14 +62,6 @@ contract ProjectController is Owned {
     uint public bottomThreshold;         // max amount to be held in the `mainVault` (in the smallest unit of `baseToken`)
     uint public whiteListTimelock;
 
-
-    // Parameters set by the parent project in the constructor
-    uint public maxDailyLimit;          // absolute max amount to be sent out of any project's vault per day (in the smallest unit of `baseToken`)
-    uint public maxDailyTransactions;   // absolute max number of txns per day for any project's vault
-    uint public maxTransactionLimit;    // absolute max amount to be sent per txn for any project's vault (in the smallest unit of `baseToken`)
-    uint public maxTopThreshold;
-    uint public minWhiteListTimelock;
-
     uint public accTxsInDay;       // var tracking the daily number in the main vault
     uint public accAmountInDay;    // var tracking the daily amount transferred in the main vault
     uint public dayOfLastTx;       // var tracking the day that the last txn happened
@@ -82,8 +74,13 @@ contract ProjectController is Owned {
     ///  only addresses that can call a function with this modifier
     modifier onlyOwnerOrParent() {
         if (    (msg.sender != owner)
-             && (msg.sender != address(parentProjectController)))
+             && (msg.sender != address(parentVaultController)))
            throw;
+        _;
+    }
+
+    modifier onlyParent() {
+        if (msg.sender != parentVaultController) throw;
         _;
     }
 
@@ -94,35 +91,37 @@ contract ProjectController is Owned {
 
     /// @notice Deployed after deploying the Vault factory to create the
     ///  ProjectBalancer Contract
-    function ProjectController(
+    function VaultController(
         string _name,
         address _vaultFactory,
-        address _projectControllerFactory,
+        address _vaultControllerFactory,
         address _baseToken,
         address _escapeHatchCaller,
         address _escapeHatchDestination,
-        address _parentProjectController,
+        address _parentVaultController,
         address _parentVault,
-        uint _maxDailyLimit,
-        uint _maxDailyTransactions,
-        uint _maxTransactionLimit,
-        uint _maxTopThreshold,
-        uint _minWhiteListTimelock
+        uint _dailyLimit,
+        uint _dailyTransactions,
+        uint _transactionLimit,
+        uint _topThreshold,
+        uint _bottomThreshold,
+        uint _whiteListTimelock
     ) {
 
         // Initializing all the variables
         vaultFactory = VaultFactory(_vaultFactory);     // vaultFactory is deployed first
-        projectControllerFactory = ProjectControllerFactory(_projectControllerFactory);     // vaultFactory is deployed first
+        vaultControllerFactory = VaultControllerFactory(_vaultControllerFactory);     // vaultFactory is deployed first
         baseToken = _baseToken;
         escapeHatchCaller = _escapeHatchCaller;
         escapeHatchDestination = _escapeHatchDestination;
-        parentProjectController = ProjectController(_parentProjectController);
+        parentVaultController = VaultController(_parentVaultController);
         parentVault = _parentVault;
-        maxDailyLimit = _maxDailyLimit;
-        maxDailyTransactions = _maxDailyTransactions;
-        maxTransactionLimit = _maxTransactionLimit;
-        maxTopThreshold = _maxTopThreshold;
-        minWhiteListTimelock = _minWhiteListTimelock;
+        dailyLimit = _dailyLimit;
+        dailyTransactions = _dailyTransactions;
+        transactionLimit = _transactionLimit;
+        topThreshold = _topThreshold;
+        bottomThreshold = _bottomThreshold;
+        whiteListTimelock = _whiteListTimelock;
 
         name = _name;
         dailyLimit = maxDailyLimit;
@@ -155,8 +154,8 @@ contract ProjectController is Owned {
             0x0
         );
 
-        if (address(parentProjectController) != 0) {
-            parentProjectController.refillMe();
+        if (address(parentVaultController) != 0) {
+            parentVaultController.refillMe();
         }
     }
 
@@ -169,23 +168,25 @@ contract ProjectController is Owned {
     function createProject(
         string _name,
         address _admin,
-        uint _maxDailyLimit,
-        uint _maxDailyTransactions,
-        uint _maxTransactionLimit,
-        uint _maxTopThreshold,
-        uint _minWhiteListTimelock
+        uint _dailyLimit,
+        uint _dailyTransactions,
+        uint _transactionLimit,
+        uint _topThreshold,
+        uint _bottomThreshold,
+        uint _whiteListTimelock
     ) onlyOwner returns (uint) {
 
         // checks. The limits can not be greater than in the parent.
-        if (_maxDailyLimit > dailyLimit) throw;
-        if (_maxDailyTransactions > dailyLimit) throw;
-        if (_maxTransactionLimit > transactionLimit) throw;
-        if (_minWhiteListTimelock < whiteListTimelock) throw;
+        if (_dailyLimit > dailyLimit) throw;
+        if (_dailyTransactions > dailyLimit) throw;
+        if (_transactionLimit > transactionLimit) throw;
+        if (_whiteListTimelock < whiteListTimelock) throw;
 
 
-        if (_maxTopThreshold > topThreshold) throw;
+        if (_topThreshold > topThreshold) throw;
+        if (_bottomThreshold > _topThreshold) throw;
 
-        ProjectController pc =  ProjectController(projectControllerFactory.create(
+        VaultController pc =  VaultController(vaultControllerFactory.create(
             _name,
             vaultFactory,
             baseToken,
@@ -193,11 +194,12 @@ contract ProjectController is Owned {
             escapeHatchDestination,
             address(this),
             address(mainVault),
-            _maxDailyLimit,
-            _maxDailyTransactions,
-            _maxTransactionLimit,
-            _maxTopThreshold,
-            _minWhiteListTimelock
+            _dailyLimit,
+            _dailyTransactions,
+            _transactionLimit,
+            _topThreshold,
+            _bottomThreshold,
+            _whiteListTimelock
         ));
 
 
@@ -214,7 +216,7 @@ contract ProjectController is Owned {
 
     function cancelChildProject(uint _idProject) onlyOwner {
         if (_idProject >= childProjects.length) throw;
-        ProjectController pc= childProjects[_idProject];
+        VaultController pc= childProjects[_idProject];
 
         pc.cancelProject();
     }
@@ -238,7 +240,7 @@ contract ProjectController is Owned {
             canceled = true;
             topThreshold = 0;
             bottomThreshold = 0;
-            owner = parentProjectController;
+            owner = parentVaultController;
             ProjectCanceled(msg.sender);
         }
     }
@@ -250,6 +252,43 @@ contract ProjectController is Owned {
         for (i=0; i<childProjects.length; i++) {
             cancelChildProject(i);
         }
+    }
+
+
+    function setChildProjectParams(
+        uint _idChildProject,
+        uint _dailyLimit,
+        uint _dailyTransactions,
+        uint _transactionLimit,
+        uint _startHour,
+        uint _endHour,
+        uint _whiteListTimelock,
+        uint _topThreshold,
+        uint _bottomThreshold
+    ) onlyOwner {
+        if (_idChildProject > childProjects.length) throw;
+        VaultController vc = childProjects[_idChildProject];
+
+        if (_dailyLimit > dailyLimit) throw;
+        if (_dailyTransactions > dailyLimit) throw;
+        if (_transactionLimit > transactionLimit) throw;
+        if (_whiteListTimelock < whiteListTimelock) throw;
+        if (_topThreshold > topThreshold) throw;
+        if (_bottomThreshold > _topThreshold) throw;
+        if (_startHour >= 86400) throw;
+        if (_endHour > 86400) throw;
+
+        vc.setProjectParams(
+            _idChildProject,
+            _dailyLimit,
+            _dailyTransactions,
+            _transactionLimit,
+            _startHour,
+            _endHour,
+            _whiteListTimelock,
+            _topThreshold,
+            _bottomThreshold
+        );
     }
 
 
@@ -265,28 +304,17 @@ contract ProjectController is Owned {
         uint _whiteListTimelock,
         uint _topThreshold,
         uint _bottomThreshold
-    ) onlyOwner {
-        if (_dailyLimit > maxDailyLimit) throw;
-        if (_dailyTransactions > maxDailyTransactions) throw;
-        if (_transactionLimit > maxTransactionLimit) throw;
-        if (_startHour >= 86400) throw;
-        if (_endHour > 86400) throw;
-        if (_whiteListTimelock < minWhiteListTimelock) throw;
-        if (_topThreshold > maxTopThreshold) throw;
-        if (_bottomThreshold > _topThreshold) throw;
-
+    ) onlyParent {
         dailyLimit = _dailyLimit;
         dailyTransactions = _dailyTransactions;
         transactionLimit = _transactionLimit;
         startHour = _startHour;
         endHour = _endHour;
         whiteListTimelock = _whiteListTimelock;
-        bottomThreshold = _bottomThreshold;
         topThreshold = _topThreshold;
+        bottomThreshold = _bottomThreshold;
 
-        if (address(parentProjectController) != 0) {
-            parentProjectController.refillMe();
-        }
+        parentVaultController.refillMe();
         sendBackOverflow();
 
         ParamsChanged();
@@ -302,7 +330,7 @@ contract ProjectController is Owned {
         uint idProject = addr2project[msg.sender];
         if (addr2project[msg.sender] == 0) throw;
         idProject--;
-        ProjectController pc = childProjects[idProject];
+        VaultController pc = childProjects[idProject];
         uint projectBalance = Vault(pc.mainVault()).getBalance();
         if (projectBalance < pc.bottomThreshold()) {
             uint transferAmount = pc.topThreshold() - projectBalance;
@@ -353,8 +381,8 @@ contract ProjectController is Owned {
         if (!checkMainTransfer(_recipient, _amount)) throw;
         if (!checkSpenderTransfer(s, _recipient, _amount)) throw;
 
-        if (address(parentProjectController) != 0) {
-            parentProjectController.refillMe();
+        if (address(parentVaultController) != 0) {
+            parentVaultController.refillMe();
         }
         sendBackOverflow();
 
@@ -368,8 +396,8 @@ contract ProjectController is Owned {
           0
         );
 
-        if (address(parentProjectController) != 0) {
-            parentProjectController.refillMe();
+        if (address(parentVaultController) != 0) {
+            parentVaultController.refillMe();
         }
     }
 
@@ -386,9 +414,9 @@ contract ProjectController is Owned {
         uint idSpender = spenders.length ++;
         Spender s = spenders[idSpender];
 
-        if (_dailyLimit > maxDailyLimit) throw;
-        if (_dailyTransactions > maxDailyTransactions) throw;
-        if (_transactionLimit > maxTransactionLimit) throw;
+        if (_dailyLimit > dailyLimit) throw;
+        if (_dailyTransactions > dailyTransactions) throw;
+        if (_transactionLimit > transactionLimit) throw;
         if (_startHour >= 86400) throw;
         if (_endHour > 86400) throw;
 
@@ -620,14 +648,14 @@ contract VaultFactory {
     }
 }
 
-contract ProjectControllerFactory {
+contract VaultControllerFactory {
     function create(
         string _name,
         address _vaultFactory,
         address _baseToken,
         address _escapeHatchCaller,
         address _escapeHatchDestination,
-        address _parentProjectController,
+        address _parentVaultController,
         address _parentVault,
         uint _maxDailyLimit,
         uint _maxDailyTransactions,
@@ -635,14 +663,14 @@ contract ProjectControllerFactory {
         uint _maxTopThreshold,
         uint _minWhiteListTimelock
     ) returns(address) {
-        ProjectController pc = new ProjectController(
+        VaultController pc = new VaultController(
             _name,
             _vaultFactory,
             address(this),
             _baseToken,
             _escapeHatchCaller,
             _escapeHatchDestination,
-            _parentProjectController,
+            _parentVaultController,
             _parentVault,
             _maxDailyLimit,
             _maxDailyTransactions,

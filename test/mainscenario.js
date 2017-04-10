@@ -3,10 +3,10 @@ import assert from "assert"; // node.js core module
 import async from "async";
 import path from "path";
 
-import ProjectController from "../js/projectcontroller";
+import VaultController from "../js/vaultcontroller";
 
-describe("Normal Scenario Project Balancer test", () => {
-    let projectController;
+describe("Normal Scenario test for VaultController", () => {
+    let vaultController;
     let owner;
     let escapeHatchCaller;
     let escapeHatchDestination;
@@ -47,35 +47,36 @@ describe("Normal Scenario Project Balancer test", () => {
     });
     it("should compile contracts", (done) => {
         ethConnector.compile(
-            path.join(__dirname, "../contracts/ProjectController.sol"),
-            path.join(__dirname, "../contracts/ProjectController.sol.js"),
+            path.join(__dirname, "../contracts/VaultController.sol"),
+            path.join(__dirname, "../contracts/VaultController.sol.js"),
             done,
         );
     }).timeout(20000);
     it("should deploy all the contracts ", (done) => {
-        ProjectController.deploy(ethConnector.web3, {
+        VaultController.deploy(ethConnector.web3, {
             from: owner,
             name: "Main Vault",
             baseToken: 0,
             escapeHatchCaller,
             escapeHatchDestination,
-            parentProjectController: 0,
+            parentVaultController: 0,
             parentVault,
-            maxDailyLimit: ethConnector.web3.toWei(100),
-            maxDailyTransactions: 5,
-            maxTransactionLimit: ethConnector.web3.toWei(50),
-            maxTopThreshold: ethConnector.web3.toWei(500),
-            minWhiteListTimelock: 86400,
+            dailyLimit: ethConnector.web3.toWei(100),
+            dailyTransactions: 5,
+            transactionLimit: ethConnector.web3.toWei(50),
+            topThreshold: ethConnector.web3.toWei(500),
+            bottomThreshold: ethConnector.web3.toWei(500),
+            whiteListTimelock: 86400,
             verbose: false,
-        }, (err, _projectController) => {
+        }, (err, _vaultController) => {
             assert.ifError(err);
-            assert.ok(_projectController.contract.address);
-            projectController = _projectController;
+            assert.ok(_vaultController.contract.address);
+            vaultController = _vaultController;
             done();
         });
     }).timeout(20000);
     it("Should check main ", (done) => {
-        projectController.getState((err, st) => {
+        vaultController.getState((err, st) => {
             assert.ifError(err);
             assert.equal(owner, st.owner);
             mainVaultAddr = st.mainVault.address;
@@ -98,14 +99,14 @@ describe("Normal Scenario Project Balancer test", () => {
         });
     });
     it("Should payed be done ", (done) => {
-        projectController.getState((err, st) => {
+        vaultController.getState((err, st) => {
             assert.ifError(err);
             assert.equal(st.mainVault.balance, web3.toWei(500));
             done();
         });
     }).timeout(6000);
     it("Should add a project", (done) => {
-        projectController.createProject({
+        vaultController.createProject({
             name: "Project 1",
             admin,
             maxDailyLimit: ethConnector.web3.toWei(100),
@@ -120,21 +121,21 @@ describe("Normal Scenario Project Balancer test", () => {
         });
     }).timeout(20000);
     it("Should read test", (done) => {
-        projectController.contract.test1((err, res) => {
+        vaultController.contract.test1((err, res) => {
             assert.ifError(err);
             console.log("test1: " + res);
             done();
         });
     });
     it("Should project be added ", (done) => {
-        projectController.getState((err, st) => {
+        vaultController.getState((err, st) => {
             console.log(JSON.stringify(st,null,2));
             assert.ifError(err);
-            assert.equal(st.projects.length, 1);
-            assert.equal(st.projects[ 0 ].name, "Project 1");
-            assert.equal(st.projects[ 0 ].mainVault.balance, web3.toWei(20));
+            assert.equal(st.childProjects.length, 1);
+            assert.equal(st.childProjects[ 0 ].name, "Project 1");
+            assert.equal(st.childProjects[ 0 ].mainVault.balance, web3.toWei(20));
             assert.equal(st.mainVault.balance, web3.toWei(480));
             done();
         });
-    }).timeout(6000);
+    }).timeout(10000);
 });

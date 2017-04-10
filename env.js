@@ -8,7 +8,7 @@ const BigNumber = require("bignumber.js");
 const eth = web3.eth;
 const async = require("async");
 
-const ProjectController = require("./dist/projectcontroller.js");
+const ProjectController = require("./dist/vaultcontroller.js");
 
 var gcb = function(err, res) {
     if (err) {

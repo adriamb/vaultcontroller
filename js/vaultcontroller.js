@@ -2,13 +2,13 @@ import async from "async";
 import _ from "lodash";
 import Vault from "vaultcontract";
 import { deploy, sendContractTx, asyncfunc } from "runethtx";
-import { ProjectControllerAbi, ProjectControllerByteCode, ProjectControllerFactoryAbi, ProjectControllerFactoryByteCode, VaultFactoryAbi, VaultFactoryByteCode } from "../contracts/ProjectController.sol.js";
+import { VaultControllerAbi, VaultControllerByteCode, VaultControllerFactoryAbi, VaultControllerFactoryByteCode, VaultFactoryAbi, VaultFactoryByteCode } from "../contracts/VaultController.sol.js";
 
-export default class ProjectController {
+export default class VaultController {
 
     constructor(web3, address) {
         this.web3 = web3;
-        this.contract = this.web3.eth.contract(ProjectControllerAbi).at(address);
+        this.contract = this.web3.eth.contract(VaultControllerAbi).at(address);
     }
 
     getState(_cb) {
@@ -65,7 +65,7 @@ export default class ProjectController {
                     this.contract.numberOfProjects((err, res) => {
                         if (err) { cb1(err); return; }
                         nProjects = res.toNumber();
-                        st.projects = [];
+                        st.childProjects = [];
                         cb1();
                     });
                 },
@@ -73,10 +73,10 @@ export default class ProjectController {
                     async.eachSeries(_.range(0, nProjects), (idProject, cb2) => {
                         this.contract.childProjects(idProject, (err, addrChildProject) => {
                             if (err) { cb1(err); return; }
-                            const childProject = new ProjectController(this.web3, addrChildProject);
+                            const childProject = new VaultController(this.web3, addrChildProject);
                             childProject.getState((err2, _st) => {
                                 if (err2) { cb2(err2); return; }
-                                st.projects.push(_st);
+                                st.childProjects.push(_st);
                                 cb2();
                             });
                         });
@@ -113,7 +113,7 @@ export default class ProjectController {
 
     static deploy(web3, opts, _cb) {
         return asyncfunc((cb) => {
-            let projectController;
+            let vaultController;
             const params = Object.assign({}, opts);
             async.series([
                 (cb1) => {
@@ -129,31 +129,31 @@ export default class ProjectController {
                     });
                 },
                 (cb1) => {
-                    params.abi = ProjectControllerFactoryAbi;
-                    params.byteCode = ProjectControllerFactoryByteCode;
-                    deploy(web3, params, (err, _projectControllerFactory) => {
+                    params.abi = VaultControllerFactoryAbi;
+                    params.byteCode = VaultControllerFactoryByteCode;
+                    deploy(web3, params, (err, _vaultControllerFactory) => {
                         if (err) {
                             cb1(err);
                             return;
                         }
-                        params.projectControllerFactory = _projectControllerFactory.address;
+                        params.vaultControllerFactory = _vaultControllerFactory.address;
                         cb1();
                     });
                 },
                 (cb1) => {
-                    params.abi = ProjectControllerAbi;
-                    params.byteCode = ProjectControllerByteCode;
-                    deploy(web3, params, (err, _projectController) => {
+                    params.abi = VaultControllerAbi;
+                    params.byteCode = VaultControllerByteCode;
+                    deploy(web3, params, (err, _vaultController) => {
                         if (err) {
                             cb1(err);
                             return;
                         }
-                        projectController = new ProjectController(web3, _projectController.address);
+                        vaultController = new VaultController(web3, _vaultController.address);
                         cb1();
                     });
                 },
                 (cb1) => {
-                    projectController.initialize({}, cb1);
+                    vaultController.initialize({}, cb1);
                 },
             ],
             (err) => {
@@ -161,7 +161,7 @@ export default class ProjectController {
                     cb(err);
                     return;
                 }
-                cb(null, projectController);
+                cb(null, vaultController);
             });
         }, _cb);
     }

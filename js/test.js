@@ -1,13 +1,13 @@
 import ethConnector from "ethconnector";
 import async from "async";
-import ProjectController from "../js/projectcontroller";
+import VaultController from "../js/vaultcontroller";
 
 let owner;
 let escapeHatchCaller;
 let escapeHatchDestination;
 let parentVault;
 let admin;
-let projectController;
+let vaultController;
 
 ethConnector.init("testrpc", (err) => {
     if (err) {
@@ -21,7 +21,7 @@ ethConnector.init("testrpc", (err) => {
     admin = ethConnector.accounts[ 4 ];
     async.series([
         (cb) => {
-            ProjectController.deploy(ethConnector.web3, {
+            VaultController.deploy(ethConnector.web3, {
                 from: owner,
                 name: "Main Vault",
                 baseToken: 0,
@@ -35,19 +35,19 @@ ethConnector.init("testrpc", (err) => {
                 maxTopThreshold: ethConnector.web3.toWei(500),
                 minWhiteListTimelock: 86400,
                 verbose: true,
-            }, (err2, _ProjectController) => {
+            }, (err2, _vaultController) => {
                 if (err2) {
                     console.log(err2);
                     cb(err2);
                     return;
                 }
-                projectController = _ProjectController;
-                console.log(_ProjectController.contract.address);
+                vaultController = _vaultController;
+                console.log(_vaultController.contract.address);
                 cb();
             });
         },
         (cb) => {
-            projectController.createProject({
+            vaultController.createProject({
                 name: "Project 1",
                 admin,
                 maxDailyLimit: ethConnector.web3.toWei(100),
@@ -66,5 +66,11 @@ ethConnector.init("testrpc", (err) => {
                 cb();
             });
         },
+        (cb) => {
+            vaultController.getState((err, st) => {
+                console.log(JSON.stringify(st,null,2));
+                cb();
+            });
+        }
     ]);
 });
