@@ -4,14 +4,17 @@ import "../node_modules/vaultcontract/contracts/Vault.sol";
 
 contract VaultController is Owned {
 
+    /// @dev The `Recipient` is an address that is allowed to receive `baseToken`
+    ///  from this controller's Vault after `timeLockExpiration` has passed
     struct Recipient {
         uint activationTime;
         address addr;
         string name;
     }
 
-    /// @dev mapping of the transactions that have been authorized (not
-    ///  necessarily completed)
+    /// @dev The `Spender` is allowed to initiate transactions to a 'Recipient`
+    ///  as long as the transaction does not violate any of the limits in their
+    ///  struct and they are `active`
     struct Spender {
         bool active;
         address addr;
@@ -26,26 +29,26 @@ contract VaultController is Owned {
         uint accAmountInDay;    // var tracking the daily amount transferred in the main vault
         uint dayOfLastTx;       // var tracking the day that the last txn happened
 
-        Recipient[] recipients;
-        mapping(address => uint) addr2recipient;
+        Recipient[] recipients;  // Array of recipients
+        mapping(address => uint) addr2recipient; // An index of the Recipients' addresses 
     }
 
-    Spender[] public spenders;
-    mapping(address => uint) addr2spender;
+    Spender[] public spenders;  // Array of spenders
+    mapping(address => uint) addr2spender;  // An index of the Spenders' addresses
 
-    VaultController[] public childProjects;
-    mapping(address => uint) addr2project;
+    VaultController[] public childProjects; // Array of childVaults under this vault
+    mapping(address => uint) addr2project;  // An index of the childVaults' addresses
 
     string public name;
     bool canceled;
 
 
-    VaultController public parentVaultController;
-    address public parentVault;
-    Vault public mainVault;     // the vault that is funding all the project vaults
+    VaultController public parentVaultController; // Controller of the Vault that feeds this Vault (if there is one)
+    address public parentVault;                   // Address of the Vault that feeds this Vault (if there is one)
+    Vault public mainVault;     // Vault that is funding all the childVaults
 
     VaultFactory public vaultFactory;  // the contract that is used to create vaults
-    VaultControllerFactory public vaultControllerFactory;
+    VaultControllerFactory public vaultControllerFactory; // the contract that is used to create vaultControllers
 
     address public baseToken;          // The address of the token that is used as a store value
                                 //  for this contract, 0x0 in case of ether. The token must have the ERC20
@@ -53,13 +56,13 @@ contract VaultController is Owned {
     address public escapeHatchCaller;          // the address that can empty all the vaults if there is an issue
     address public escapeHatchDestination;     // the cold wallet
 
-    uint public dailyLimit;        // max amount to be sent out of the `mainVault` per day (in the smallest unit of `baseToken`)
-    uint public dailyTransactions; // max number of txns from the `mainVault` per day
+    uint public dailyLimit;        // max amount to be sent out of a Vault per day (in the smallest unit of `baseToken`)
+    uint public dailyTransactions; // max number of txns from the a Vault per day
     uint public transactionLimit;  // max amount to be sent from the `mainVault` per txn (in the smallest unit of `baseToken`)
-    uint public startHour;         // 0-86399 earliest moment the `mainVault` can send funds (in seconds after the start of the UTC day)
-    uint public endHour;           // 1-86400 last moment the `mainVault` can send funds (in seconds after the start of the UTC day)
-    uint public topThreshold;      // min amount to be held in the `mainVault` (in the smallest unit of `baseToken`)
-    uint public bottomThreshold;         // max amount to be held in the `mainVault` (in the smallest unit of `baseToken`)
+    uint public startHour;         // 0-86399 earliest moment the a Vault can send funds (in seconds after the start of the UTC day)
+    uint public endHour;           // 1-86400 last moment the a Vault can send funds (in seconds after the start of the UTC day)
+    uint public topThreshold;      // min amount to be held in the a Vault (in the smallest unit of `baseToken`)
+    uint public bottomThreshold;         // max amount to be held in the a Vault (in the smallest unit of `baseToken`)
     uint public whiteListTimelock;
 
     uint public accTxsInDay;       // var tracking the daily number in the main vault
@@ -70,7 +73,7 @@ contract VaultController is Owned {
 // Modifiers
 /////////
 
-    /// @dev The addresses preassigned as the Owner or Project Admin are the
+    /// @dev The addresses preassigned as the Owner or Parent are the
     ///  only addresses that can call a function with this modifier
     modifier onlyOwnerOrParent() {
         if (    (msg.sender != owner)
@@ -79,6 +82,8 @@ contract VaultController is Owned {
         _;
     }
 
+    /// @dev The address preassigned as the Parent Vault's Controller is the
+    ///  only address that can call a function with this modifier
     modifier onlyParent() {
         if (msg.sender != parentVaultController) throw;
         _;
@@ -89,8 +94,9 @@ contract VaultController is Owned {
 // Constructor
 /////////
 
-    /// @notice Deployed after deploying the Vault factory to create the
-    ///  ProjectBalancer Contract
+    /// @notice Deployed after deploying the `vaultFactory` and the 
+    ///  `vaultControllerFactory`; Creates the `vaultController` for the
+    ///  `primaryVault`
     function VaultController(
         string _name,
         address _vaultFactory,
@@ -98,8 +104,8 @@ contract VaultController is Owned {
         address _baseToken,
         address _escapeHatchCaller,
         address _escapeHatchDestination,
-        address _parentVaultController,
-        address _parentVault,
+        address _parentVaultController,     // 0x0 if a `primaryVault`
+        address _parentVault,               // 0x0 if a `primaryVault`
         uint _dailyLimit,
         uint _dailyTransactions,
         uint _transactionLimit,
@@ -109,8 +115,8 @@ contract VaultController is Owned {
     ) {
 
         // Initializing all the variables
-        vaultFactory = VaultFactory(_vaultFactory);     // vaultFactory is deployed first
-        vaultControllerFactory = VaultControllerFactory(_vaultControllerFactory);     // vaultFactory is deployed first
+        vaultFactory = VaultFactory(_vaultFactory);
+        vaultControllerFactory = VaultControllerFactory(_vaultControllerFactory);
         baseToken = _baseToken;
         escapeHatchCaller = _escapeHatchCaller;
         escapeHatchDestination = _escapeHatchDestination;
@@ -127,7 +133,7 @@ contract VaultController is Owned {
         dailyLimit = maxDailyLimit;
         dailyTransactions = maxDailyTransactions;
         transactionLimit = maxTransactionLimit;
-        startHour = 0;
+        startHour = 0;                          
         endHour = 86400;
         topThreshold = maxTopThreshold;
         bottomThreshold = maxTopThreshold/10;
@@ -138,9 +144,9 @@ contract VaultController is Owned {
 // Public Methods
 /////////
 
-    /// @notice `onlyOwner` Creates the mainVault; this is the third and final
-    ///  function call that needs to be made to finish deploying this system;
-    ///  this deploys the mainVault
+    /// @notice `onlyOwner` Creates the `primaryVault`; this is the fourth and
+    ///  final function call that needs to be made to finish deploying this
+    ///  system; this deploys the mainVault
     function initialize() onlyOwner {
 
         if (address(mainVault) != 0) throw;
@@ -150,7 +156,7 @@ contract VaultController is Owned {
         // Authorize this contract to spend money from this vault
         mainVault.authorizeSpender(
             address(this),
-            "Project Balancer",
+            "VAULT CONTROLLER",
             0x0
         );
 
@@ -231,7 +237,7 @@ contract VaultController is Owned {
 
         if ((projectBalance > 0) || (!canceled)) {
             mainVault.authorizePayment(
-              "CANCEL PROJECT",
+              "CANCEL CHILD VAULT",
               bytes32(msg.sender),
               address(parentVault),
               projectBalance,
@@ -320,8 +326,8 @@ contract VaultController is Owned {
         ParamsChanged();
     }
 
-    /// @notice `onlyOwnerOrProjectAdmin` Requests to Fill up the specified project's vault
-    ///  to the topThreshold from th `mainVault`
+    /// @notice A `childVaultController` calls this function to top up their 
+    ///  Vault's Balance to the `highestAcceptableBalance`
 
     uint public test1;
 
@@ -340,7 +346,7 @@ contract VaultController is Owned {
             if (   checkMainTransfer(pc.mainVault(), transferAmount)
                 && (transferAmount > 0)) {
                 mainVault.authorizePayment(
-                  "REFILL PROJECT",
+                  "TOP UP VAULT",
                   bytes32(idProject),
                   address(pc.mainVault()),
                   transferAmount,
@@ -682,4 +688,3 @@ contract VaultControllerFactory {
         return address(pc);
     }
 }
-
