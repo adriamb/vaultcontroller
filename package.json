@@ -1,15 +1,15 @@
 {
-  "name": "projectbalancer",
+  "name": "vaultcontroller",
   "version": "0.0.1",
   "description": "Smart Contract to implement a Project Balancer",
-  "main": "dist/projectbalancer.js",
+  "main": "dist/vaultcontroller.js",
   "scripts": {
     "test": "mocha --compilers js:babel-core/register",
     "build": "rm -rf dist/* && babel-node js/compile.js && babel js/vaultcontroller.js -o dist/vaultcontroller.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Giveth/projectbalancer.git"
+    "url": "git+https://github.com/Giveth/vaultcontroller.git"
   },
   "keywords": [
     "vault",
@@ -25,9 +25,9 @@
   "author": "Jordi Baylina",
   "license": "GPL-3.0",
   "bugs": {
-    "url": "https://github.com/Giveth/projectbalancer/issues"
+    "url": "https://github.com/Giveth/vaultcontroller/issues"
   },
-  "homepage": "https://github.com/Giveth/projectbalancer#readme",
+  "homepage": "https://github.com/Giveth/vaultcontroller#readme",
   "dependencies": {
     "async": "^2.1.4",
     "lodash": "^4.17.4",
