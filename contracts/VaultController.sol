@@ -19,21 +19,21 @@ contract VaultController is Owned {
         bool active;
         address addr;
         string name;
-        uint dailyAmountLimit;        // max amount to be sent out of the `primaryVault` per day (in the smallest unit of `baseToken`)
-        uint dailyTxnLimit; // max number of txns from the `primaryVault` per day
-        uint txnAmountLimit;  // max amount to be sent from the `primaryVault` per txn (in the smallest unit of `baseToken`)
-        uint openingTime;         // 0-86399 earliest moment the `primaryVault` can send funds (in seconds after the start of the UTC day)
-        uint closingTime;           // 1-86400 last moment the `primaryVault` can send funds (in seconds after the start of the UTC day)
+        uint dailyAmountLimit;  // max amount able to be sent out of the  (in the smallest unit of `baseToken`)
+        uint dailyTxnLimit;     // max number of txns from the Vault per day by this spender
+        uint txnAmountLimit;    // max amount to be sent from the Vault per day by this spender (in the smallest unit of `baseToken`)
+        uint openingTime;       // 0-86399 earliest moment the spender can send funds (in seconds after the start of the UTC day)
+        uint closingTime;       // 1-86400 last moment the spender can send funds (in seconds after the start of the UTC day)
 
         uint accTxsInDay;       // var tracking the daily number in the main vault
         uint accAmountInDay;    // var tracking the daily amount transferred in the main vault
         uint dayOfLastTx;       // var tracking the day that the last txn happened
 
-        Recipient[] recipients;  // Array of recipients
+        Recipient[] recipients;  // Array of recipients the spender can send to
         mapping(address => uint) addr2recipientId; // An index of the Recipients' addresses
     }
 
-    Spender[] public spenders;  // Array of spenders
+    Spender[] public spenders;  // Array of spenders that can request payments from this vault
     mapping(address => uint) addr2dpenderId;  // An index of the Spenders' addresses
 
     VaultController[] public childVaultControllers; // Array of childVaults under this vault
@@ -50,20 +50,20 @@ contract VaultController is Owned {
     VaultFactory public vaultFactory;  // the contract that is used to create vaults
     VaultControllerFactory public vaultControllerFactory; // the contract that is used to create vaultControllers
 
-    address public baseToken;          // The address of the token that is used as a store value
+    address public baseToken;   // The address of the token that is used as a store value
                                 //  for this contract, 0x0 in case of ether. The token must have the ERC20
                                 //  standard `balanceOf()` and `transfer()` functions
-    address public escapeHatchCaller;          // the address that can empty all the vaults if there is an issue
+    address public escapeHatchCaller;          // the address that can empty the vault if there is an issue
     address public escapeHatchDestination;     // the cold wallet
 
-    uint public dailyAmountLimit;        // max amount to be sent out of a Vault per day (in the smallest unit of `baseToken`)
-    uint public dailyTxnLimit; // max number of txns from the a Vault per day
-    uint public txnAmountLimit;  // max amount to be sent from the `primaryVault` per txn (in the smallest unit of `baseToken`)
-    uint public openingTime;         // 0-86399 earliest moment the a Vault can send funds (in seconds after the start of the UTC day)
-    uint public closingTime;           // 1-86400 last moment the a Vault can send funds (in seconds after the start of the UTC day)
-    uint public highestAcceptableBalance;      // min amount to be held in the a Vault (in the smallest unit of `baseToken`)
-    uint public lowestAcceptableBalance;         // max amount to be held in the a Vault (in the smallest unit of `baseToken`)
-    uint public whiteListTimelock;
+    uint public dailyAmountLimit;           // max amount to be sent out of this Vault per day (in the smallest unit of `baseToken`)
+    uint public dailyTxnLimit;              // max number of txns from the this Vault per day
+    uint public txnAmountLimit;             // max amount to be sent from this Vault per txn (in the smallest unit of `baseToken`)
+    uint public openingTime;                // 0-86399 earliest moment funds can be spent (in seconds after the start of the UTC day)
+    uint public closingTime;                // 1-86400 last moment funds can be spent (in seconds after the start of the UTC day)
+    uint public highestAcceptableBalance;   // max amount to be held in this Vault (in the smallest unit of `baseToken`)
+    uint public lowestAcceptableBalance;    // min amount to be held in this Vault (in the smallest unit of `baseToken`)
+    uint public whiteListTimelock;          // the number of seconds a spender has to wait to send funds to a newly added recipient
 
     uint public accTxsInDay;       // var tracking the daily number in the main vault
     uint public accAmountInDay;    // var tracking the daily amount transferred in the main vault
