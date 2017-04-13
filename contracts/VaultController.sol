@@ -16,10 +16,10 @@ contract VaultController is Owned {
     ///  as long as the transaction does not violate any of the limits in their
     ///  struct and they are `active`
     struct Spender {
-        bool active;
+        bool active;            // True if this spender is authorized to make payments
         address addr;
         string name;
-        uint dailyAmountLimit;  // max amount able to be sent out of the  (in the smallest unit of `baseToken`)
+        uint dailyAmountLimit;  // max amount able to be sent out of the Vault by this spender (in the smallest unit of `baseToken`)
         uint dailyTxnLimit;     // max number of txns from the Vault per day by this spender
         uint txnAmountLimit;    // max amount to be sent from the Vault per day by this spender (in the smallest unit of `baseToken`)
         uint openingTime;       // 0-86399 earliest moment the spender can send funds (in seconds after the start of the UTC day)
@@ -36,7 +36,7 @@ contract VaultController is Owned {
     Spender[] public spenders;  // Array of spenders that can request payments from this vault
     mapping(address => uint) addr2dpenderId;  // An index of the Spenders' addresses
 
-    VaultController[] public childVaultControllers; // Array of childVaults under this vault
+    VaultController[] public childVaultControllers; // Array of childVaults connected to this vault
     mapping(address => uint) addr2vaultControllerId;  // An index of the childVaults' addresses
 
     string public name;
@@ -89,16 +89,22 @@ contract VaultController is Owned {
         _;
     }
 
+    /// @dev The functions with this modifier can only be called if the
+    ///  `primaryVault` has been created
     modifier initialized() {
         if (address(primaryVault) == 0) throw;
         _;
     }
 
+    /// @dev The functions with this modifier can only be called if the
+    ///  `primaryVault` has NOT been created
     modifier notInitialized() {
-        if (address(primaryVault) == 0) throw;
+        if (address(primaryVault) != 0) throw;
         _;
     }
 
+    /// @dev The functions with this modifier can only be called if the
+    ///  `primaryVault` has NOT been created
     modifier notCanceled() {
         if (canceled) throw;
         _;
@@ -512,10 +518,12 @@ contract VaultController is Owned {
         RecipientAuthorized(idSpender, idRecipient, _recipient);
     }
 
-    /// @notice `onlyProjectAdmin` Removes `_recipient` from the whitelist of
-    ///  possible recipients
-    /// @param _spender ff
-    /// @param _recipient The address to be allowed to receive funds from the specified vault
+    /// @notice `onlyOwner` Removes `_recipient` from the whitelist of
+    ///  recipients for a given spender
+    /// @param _spender The address of the `spender` that will no longer be
+    ///  allowed to send to the `_recipient`
+    /// @param _recipient The address of the `recipient` that will no longer be
+    ///  allowed to recieve funds from the `_spender`
     function removeAuthorizedRecipient(
         address _spender,
         address _recipient
