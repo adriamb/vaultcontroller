@@ -1,6 +1,6 @@
-import ethConnector from "ethconnector";
-import async from "async";
-import VaultController from "../js/vaultcontroller";
+const ethConnector = require("ethconnector");
+const async = require("async");
+const VaultController = require("../js/vaultcontroller");
 
 let owner;
 let escapeHatchCaller;
@@ -27,14 +27,17 @@ ethConnector.init("testrpc", (err) => {
                 baseToken: 0,
                 escapeHatchCaller,
                 escapeHatchDestination,
-                parentProjectController: 0,
+                parentVaultController: 0,
                 parentVault,
-                maxDailyLimit: ethConnector.web3.toWei(100),
-                maxDailyTransactions: 5,
-                maxTransactionLimit: ethConnector.web3.toWei(50),
-                maxTopThreshold: ethConnector.web3.toWei(500),
-                minWhiteListTimelock: 86400,
-                verbose: true,
+                dailyAmountLimit: ethConnector.web3.toWei(100),
+                dailyTxnLimit: 5,
+                txnAmountLimit: ethConnector.web3.toWei(50),
+                highestAcceptableBalance: ethConnector.web3.toWei(500),
+                lowestAcceptableBalance: ethConnector.web3.toWei(50),
+                whiteListTimelock: 86400,
+                openingTime: 0,
+                closingTime: 86400,
+                verbose: false,
             }, (err2, _vaultController) => {
                 if (err2) {
                     console.log(err2);
@@ -67,10 +70,10 @@ ethConnector.init("testrpc", (err) => {
             });
         },
         (cb) => {
-            vaultController.getState((err, st) => {
-                console.log(JSON.stringify(st,null,2));
+            vaultController.getState((err2, st) => {
+                console.log(JSON.stringify(st, null, 2));
                 cb();
             });
-        }
+        },
     ]);
 });

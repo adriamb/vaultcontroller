@@ -1,5 +1,5 @@
-import ethConnector from "ethconnector";
-import path from "path";
+const ethConnector = require("ethconnector");
+const path = require("path");
 
 ethConnector.compile(
     path.join(__dirname, "../contracts/VaultController.sol"),
@@ -11,5 +11,5 @@ ethConnector.compile(
         } else {
             process.exit(0);
         }
-    },
+    }
 );

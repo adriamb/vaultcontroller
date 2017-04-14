@@ -1,10 +1,10 @@
-import async from "async";
-import _ from "lodash";
-import Vault from "vaultcontract";
-import { deploy, sendContractTx, asyncfunc } from "runethtx";
-import { VaultControllerAbi, VaultControllerByteCode, VaultControllerFactoryAbi, VaultControllerFactoryByteCode, VaultFactoryAbi, VaultFactoryByteCode } from "../contracts/VaultController.sol.js";
+const async = require("async");
+const _ = require("lodash");
+const Vault = require("vaultcontract");
+const { deploy, sendContractTx, asyncfunc } = require("runethtx");
+const { VaultControllerAbi, VaultControllerByteCode, VaultControllerFactoryAbi, VaultControllerFactoryByteCode, VaultFactoryAbi, VaultFactoryByteCode } = require("../contracts/VaultController.sol.js");
 
-export default class VaultController {
+module.exports = class VaultController {
 
     constructor(web3, address) {
         this.web3 = web3;
@@ -16,7 +16,7 @@ export default class VaultController {
             const st = {
                 address: this.contract.address,
             };
-            let nProjects;
+            let nChildVaults;
             async.series([
                 (cb1) => {
                     this.contract.name((err, _name) => {
@@ -33,53 +33,69 @@ export default class VaultController {
                     });
                 },
                 (cb1) => {
-                    this.contract.mainVault((err, _mainVault) => {
+                    this.contract.primaryVault((err, _primaryVaultAddr) => {
                         if (err) { cb1(err); return; }
-                        st.mainVault = _mainVault;
+                        st.primaryVaultAddr = _primaryVaultAddr;
                         cb1();
                     });
                 },
                 (cb1) => {
-                    const vault = new Vault(this.web3, st.mainVault);
+                    this.contract.vaultFactory((err, _vaultFactoryAddr) => {
+                        if (err) { cb1(err); return; }
+                        st.vaultFactoryAddr = _vaultFactoryAddr;
+                        cb1();
+                    });
+                },
+                (cb1) => {
+                    this.contract.vaultControllerFactory((err, _vaultControllerFactoryAddr) => {
+                        if (err) { cb1(err); return; }
+                        st.vaultControllerFactoryAddr = _vaultControllerFactoryAddr;
+                        cb1();
+                    });
+                },
+                (cb1) => {
+                    const vault = new Vault(this.web3, st.primaryVaultAddr);
                     vault.getState((err, _st) => {
                         if (err) { cb1(err); return; }
-                        st.mainVault = _st;
+                        st.primaryVault = _st;
                         cb1();
                     });
                 },
                 (cb1) => {
-                    this.contract.topThreshold((err, _topThreshold) => {
+                    this.contract.highestAcceptableBalance((err, _highestAcceptableBalance) => {
                         if (err) { cb1(err); return; }
-                        st.topThreshold = _topThreshold;
+                        st.highestAcceptableBalance = _highestAcceptableBalance;
                         cb1();
                     });
                 },
                 (cb1) => {
-                    this.contract.bottomThreshold((err, _bottomThreshold) => {
+                    this.contract.lowestAcceptableBalance((err, _lowestAcceptableBalance) => {
                         if (err) { cb1(err); return; }
-                        st.bottomThreshold = _bottomThreshold;
+                        st.lowestAcceptableBalance = _lowestAcceptableBalance;
                         cb1();
                     });
                 },
                 (cb1) => {
-                    this.contract.numberOfProjects((err, res) => {
+                    this.contract.numberOfChildVaults((err, res) => {
                         if (err) { cb1(err); return; }
-                        nProjects = res.toNumber();
-                        st.childProjects = [];
+                        nChildVaults = res.toNumber();
+                        st.childVaults = [];
                         cb1();
                     });
                 },
                 (cb1) => {
-                    async.eachSeries(_.range(0, nProjects), (idProject, cb2) => {
-                        this.contract.childProjects(idProject, (err, addrChildProject) => {
-                            if (err) { cb1(err); return; }
-                            const childProject = new VaultController(this.web3, addrChildProject);
-                            childProject.getState((err2, _st) => {
-                                if (err2) { cb2(err2); return; }
-                                st.childProjects.push(_st);
-                                cb2();
+                    async.eachSeries(_.range(0, nChildVaults), (childVaultId, cb2) => {
+                        this.contract.childVaultControllers(childVaultId,
+                            (err, addrChildVaultController) => {
+                                if (err) { cb1(err); return; }
+                                const childVaultController =
+                                    new VaultController(this.web3, addrChildVaultController);
+                                childVaultController.getState((err2, _st) => {
+                                    if (err2) { cb2(err2); return; }
+                                    st.childVaults.push(_st);
+                                    cb2();
+                                });
                             });
-                        });
                     }, cb1);
                 },
             ], (err) => {
@@ -89,26 +105,55 @@ export default class VaultController {
         }, _cb);
     }
 
-    initialize(opts, cb) {
+    initializeVault(opts, cb) {
         return sendContractTx(
             this.web3,
             this.contract,
-            "initialize",
+            "initializeVault",
             Object.assign({}, opts, {
                 extraGas: 250000,
             }),
             cb);
     }
 
-    createProject(opts, cb) {
-        return sendContractTx(
-            this.web3,
-            this.contract,
-            "createProject",
-            Object.assign({}, opts, {
-                gas: 4700000,
-            }),
-            cb);
+    createChildVault(opts, _cb) {
+        return asyncfunc((cb) => {
+            const params = Object.assign({}, opts);
+            params.gas = 3500000;
+            async.series([
+                (cb1) => {
+                    sendContractTx(
+                        this.web3,
+                        this.contract,
+                        "createChildVault",
+                        params,
+                        (err, txId) => {
+                            if (err) {
+                                cb1(err);
+                            }
+                            this.web3.eth.getTransactionReceipt(txId, (err2, receipt) => {
+                                if (err2) {
+                                    cb1(err2);
+                                }
+                                // log 0 -> NewOwner
+                                // log 1 -> NewProject
+                                //      topic 0 -> Event Name
+                                //      topic 1 -> childProjectId
+                                params.childVaultId = receipt.logs[ 1 ].topics[ 1 ];
+                                cb1();
+                            });
+                        });
+                },
+                (cb1) => {
+                    sendContractTx(
+                        this.web3,
+                        this.contract,
+                        "initializeChildVault",
+                        params,
+                        cb1);
+                },
+            ], cb);
+        }, _cb);
     }
 
     static deploy(web3, opts, _cb) {
@@ -153,7 +198,7 @@ export default class VaultController {
                     });
                 },
                 (cb1) => {
-                    vaultController.initialize({}, cb1);
+                    vaultController.initializeVault(params, cb1);
                 },
             ],
             (err) => {
@@ -165,4 +210,4 @@ export default class VaultController {
             });
         }, _cb);
     }
-}
+};

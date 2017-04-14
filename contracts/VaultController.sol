@@ -34,7 +34,7 @@ contract VaultController is Owned {
     }
 
     Spender[] public spenders;  // Array of spenders that can request payments from this vault
-    mapping(address => uint) addr2dpenderId;  // An index of the Spenders' addresses
+    mapping(address => uint) addr2spenderId;  // An index of the Spenders' addresses
 
     VaultController[] public childVaultControllers; // Array of childVaults connected to this vault
     mapping(address => uint) addr2vaultControllerId;  // An index of the childVaults' addresses
@@ -161,7 +161,7 @@ contract VaultController is Owned {
     /// @notice `onlyOwner` Creates the `primaryVault`; this is the fourth and
     ///  final function call that needs to be made to finish deploying this
     ///  system
-    function initialize(
+    function initializeVault(
         uint _dailyAmountLimit,
         uint _dailyTxnLimit,
         uint _txnAmountLimit,
@@ -179,9 +179,7 @@ contract VaultController is Owned {
         lowestAcceptableBalance = _lowestAcceptableBalance;
         whiteListTimelock = _whiteListTimelock;
 
-        if (address(primaryVault) != 0) throw;
-
-        primaryVault = Vault(vaultFactory.create(baseToken, escapeHatchCaller, escapeHatchDestination));
+        primaryVault = vaultFactory.create(baseToken, escapeHatchCaller, escapeHatchDestination);
 
         // Authorize this contract to spend money from this vault
         primaryVault.authorizeSpender(
@@ -202,31 +200,32 @@ contract VaultController is Owned {
     ///  'parentVaultController'
     /// @param _name The name for this `childVaultController`
     /// @return vaultControllerId The newly created childVaultController's ID#
-    function createVaultController(
+    function createChildVault(
         string _name
-    ) onlyOwner initialized notCanceled returns (uint) {
+    )  onlyOwner initialized notCanceled returns (uint) {
 
-        VaultController pc =  VaultController(vaultControllerFactory.create(
+        VaultController vc =  vaultControllerFactory.create(
             _name,
             vaultFactory,
             baseToken,
             escapeHatchCaller,
             escapeHatchDestination,
             address(primaryVault)
-        ));
+        );
 
-        childVaultControllers[childVaultControllers.length ++] = pc;
-        addr2vaultControllerId[address(pc)] = childVaultControllers.length;
+        uint childControllerId = childVaultControllers.length ++;
+        childVaultControllers[childControllerId] = vc;
+        addr2vaultControllerId[address(vc)] = childVaultControllers.length;
 
-        NewVault(childVaultControllers.length -1);
-        return childVaultControllers.length;
+        NewVault(childControllerId);
+        return childControllerId;
     }
 
     /// @notice `onlyOwner` Creates a new `childVault` with the specified
     ///  parameters, will fail if any of the parameters are not within the ranges
     ///  predetermined when deploying this `parentVaultController` contract
-    function initializeChildVaultController(
-        uint _idVault,
+    function initializeChildVault(
+        uint _childVaultId,
         address _admin,         // the owner of this `childVaultController`
         uint _dailyAmountLimit,
         uint _dailyTxnLimit,
@@ -237,8 +236,9 @@ contract VaultController is Owned {
         uint _openingTime,
         uint _closingTime
     ) onlyOwner initialized notCanceled {
-        if (_idVault >= childVaultControllers.length) throw;
-        VaultController pc= childVaultControllers[_idVault];
+        if (_childVaultId >= childVaultControllers.length) throw;
+        VaultController vc= childVaultControllers[_childVaultId];
+
 
         // Checks to confirm that the limits are not greater than the `parentVault`
         if (_dailyAmountLimit > dailyAmountLimit) throw;
@@ -250,7 +250,7 @@ contract VaultController is Owned {
         if (_openingTime >= 86400) throw;
         if (_closingTime > 86400) throw;
 
-        pc.initialize(
+        vc.initializeVault(
             _dailyAmountLimit,
             _dailyTxnLimit,
             _txnAmountLimit,
@@ -260,20 +260,23 @@ contract VaultController is Owned {
             _openingTime,
             _closingTime
         );
-        pc.changeOwner(_admin);
+
+                return;
+
+        vc.changeOwner(_admin);
     }
 
     /// @notice `onlyOwner` Cancels a `childVaultController`
-    function cancelChildVaultController(uint _idVault) initialized notCanceled onlyOwner {
-        if (_idVault >= childVaultControllers.length) throw;
-        VaultController pc= childVaultControllers[_idVault];
+    function cancelChildVaultController(uint _vaultControllerId) initialized notCanceled onlyOwner {
+        if (_vaultControllerId >= childVaultControllers.length) throw;
+        VaultController vc= childVaultControllers[_vaultControllerId];
 
-        pc.cancelVaultController();
+        vc.cancelVault();
     }
 
     /// @notice `onlyOwnerOrParent` Cancels this controller's Vault and all it's
     /// children, emptying them to the `parentVault`
-    function cancelVaultController() onlyOwnerOrParent initialized {
+    function cancelVault() onlyOwnerOrParent initialized {
 
         cancelAllChildControllers();
 
@@ -377,28 +380,29 @@ contract VaultController is Owned {
     ///  Vault's Balance to the `highestAcceptableBalance`
     function topUpVault() initialized notCanceled {
         if (canceled) throw;
-        uint idVault = addr2vaultControllerId[msg.sender];
+        uint vaultControllerId = addr2vaultControllerId[msg.sender];
         if (addr2vaultControllerId[msg.sender] == 0) throw;
-        idVault--;
-        VaultController pc = childVaultControllers[idVault];
-        Vault childVault = Vault(pc.primaryVault());
+        vaultControllerId--;
+        VaultController vc = childVaultControllers[vaultControllerId];
+        Vault childVault = Vault(vc.primaryVault());
         if (address(childVault) == 0) throw; // Child project is not initialized
+
         uint vaultBalance = childVault.getBalance();
-        if (vaultBalance < pc.lowestAcceptableBalance()) {
-            uint transferAmount = pc.highestAcceptableBalance() - vaultBalance;
+        if (vaultBalance < vc.lowestAcceptableBalance()) {
+            uint transferAmount = vc.highestAcceptableBalance() - vaultBalance;
             if (primaryVault.getBalance() < transferAmount) {
                 transferAmount = primaryVault.getBalance();
             }
-            if (   checkMainTransfer(pc.primaryVault(), transferAmount)
+            if (   checkMainTransfer(vc.primaryVault(), transferAmount)
                 && (transferAmount > 0)) {
                 primaryVault.authorizePayment(
                   "TOP UP VAULT",
-                  bytes32(idVault),
-                  address(pc.primaryVault()),
+                  bytes32(vaultControllerId),
+                  address(vc.primaryVault()),
                   transferAmount,
                   0
                 );
-                TopUpVault(idVault, transferAmount);
+                TopUpVault(vaultControllerId, transferAmount);
             }
         }
     }
@@ -428,8 +432,10 @@ contract VaultController is Owned {
         address _recipient,
         uint _amount
     ) initialized notCanceled {
-        uint idSpender = addr2dpenderId[msg.sender];
+        uint idSpender = addr2spenderId[msg.sender];
         if (idSpender == 0) throw;
+        // addr2spenderId stores the position in the array relative to 1
+        // so we substract one to make it relative to 0.
         idSpender --;
         Spender s = spenders[idSpender];
 
@@ -459,7 +465,7 @@ contract VaultController is Owned {
     /// @notice `onlyOwner` Authorizes `spender` to create transactions
     ///  transferring `baseTokens` out of this Controller's Vault to an authorized
     ///  `_recipient` that has waited out the `whitelistTimelock`
-    function addAuthorizeSpender(
+    function authorizeSpender(
         string _name,
         address _addr,
         uint _dailyAmountLimit,
@@ -486,18 +492,18 @@ contract VaultController is Owned {
         s.openingTime = _openingTime;
         s.closingTime = _closingTime;
 
-        addr2dpenderId[_addr] = idSpender+1;
+        addr2spenderId[_addr] = idSpender+1;
 
         SpenderAuthorized(idSpender, _addr);
     }
 
     /// @notice `onlyOwner` Removes `_spender` from the whitelist
     function removeAuthorizedSpender(address _spender) onlyOwner initialized notCanceled {
-        uint idSpender = addr2dpenderId[_spender];
+        uint idSpender = addr2spenderId[_spender];
         if (idSpender == 0) throw;
         idSpender--;
 
-        addr2dpenderId[msg.sender] = 0;
+        addr2spenderId[msg.sender] = 0;
         spenders[idSpender].active = false;
 
         SpenderRemoved(idSpender, _spender);
@@ -507,16 +513,16 @@ contract VaultController is Owned {
     /// @notice `onlyOwner` Adds `_recipient` to the whitelist of
     ///  possible recipients, but the `_recipient` cannot receive until
     ///  `whitelistTimelock` has passed
-    /// @param _spender The address that can initiate the transaction to this 
+    /// @param _spender The address that can initiate the transaction to this
     ///  `_recipient`
     /// @param _recipient the address to be allowed to receive funds from the specified vault
     /// @param _name Name of the recipient
-    function addAuthorizeRecipient(
+    function authorizeRecipient(
         address _spender,
         address _recipient,
         string _name
     ) onlyOwner initialized notCanceled {
-        uint idSpender = addr2dpenderId[_spender];
+        uint idSpender = addr2spenderId[_spender];
         if (idSpender == 0) throw;
         idSpender --;
         Spender s = spenders[idSpender];
@@ -544,7 +550,7 @@ contract VaultController is Owned {
         address _spender,
         address _recipient
     ) onlyOwner initialized notCanceled {
-        uint idSpender = addr2dpenderId[_spender];
+        uint idSpender = addr2spenderId[_spender];
         if (idSpender == 0) throw;
         idSpender --;
         Spender s = spenders[idSpender];
@@ -650,7 +656,7 @@ contract VaultController is Owned {
 
 
     /// @notice Makes it easy to see how many projects are fed by the primaryVault
-    function numberOfVaults() constant returns (uint) {
+    function numberOfChildVaults() constant returns (uint) {
         return childVaultControllers.length;
     }
 
@@ -660,7 +666,7 @@ contract VaultController is Owned {
 
 
     /// @notice Makes it easy to see how many spenders are allowed in each project
-    function getNumberOfRecipients(uint _idSpender) constant
+    function numberOfRecipients(uint _idSpender) constant
     returns (uint) {
         if (_idSpender >= spenders.length) throw;
         Spender s = spenders[_idSpender];
@@ -669,7 +675,7 @@ contract VaultController is Owned {
     }
 
     /// @notice Makes it easy to see when a recipient will be able to receive funds
-    function getRecipient(uint _idSpender, uint _idx) constant
+    function recipient(uint _idSpender, uint _idx) constant
     returns (
             uint _activationTime,
             string _name,
@@ -692,19 +698,19 @@ contract VaultController is Owned {
     event RecipientRemoved(uint indexed idSpender, uint indexed idRecipient, address indexed recipient);
 
     event Payment(address indexed recipient, bytes32 indexed reference, uint amount);
-    event NewVault(uint indexed idVault);
+    event NewVault(uint indexed vaultControllerId);
     event VaultCanceled(address indexed canceler);
-    event TopUpVault(uint indexed idVault, uint amount);
+    event TopUpVault(uint indexed vaultControllerId, uint amount);
 
     event VaultsLimitChanged();
 }
 
 /// @notice Creates its own contract that is called when a new vault needs to be made
 contract VaultFactory {
-    function create(address _baseToken, address _escapeHatchCaller, address _escapeHatchDestination) returns (address) {
+    function create(address _baseToken, address _escapeHatchCaller, address _escapeHatchDestination) returns (Vault) {
         Vault v = new Vault(_baseToken, _escapeHatchCaller, _escapeHatchDestination, 0,0,0,0);
         v.changeOwner(msg.sender);
-        return address(v);
+        return v;
     }
 }
 
@@ -718,8 +724,8 @@ contract VaultControllerFactory {
         address _escapeHatchCaller,
         address _escapeHatchDestination,
         address _parentVault
-    ) returns(address) {
-        VaultController pc = new VaultController(
+    ) returns(VaultController) {
+        VaultController vc = new VaultController(
             _name,
             _vaultFactory,
             address(this),
@@ -729,7 +735,7 @@ contract VaultControllerFactory {
             msg.sender,
             _parentVault
         );
-        pc.changeOwner(msg.sender);
-        return address(pc);
+        vc.changeOwner(msg.sender);
+        return vc;
     }
 }

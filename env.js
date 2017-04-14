@@ -8,47 +8,50 @@ const BigNumber = require("bignumber.js");
 const eth = web3.eth;
 const async = require("async");
 
-const ProjectController = require("./dist/vaultcontroller.js");
+const ProjectController = require("./js/vaultcontroller.js");
 
-var gcb = function(err, res) {
+const gcb = (err, res) => {
     if (err) {
         console.log("ERROR: "+err);
     } else {
         console.log(JSON.stringify(res,null,2));
     }
-}
+};
 
-var projectController;
+let projectController;
 
-var owner = eth.accounts[0];
-var escapeHatchCaller = eth.accounts[1];
-var escapeHatchDestination = eth.accounts[2];
-var parentVault = eth.accounts[3];
+const owner = eth.accounts[ 0 ];
+const escapeHatchCaller = eth.accounts[ 1 ];
+const escapeHatchDestination = eth.accounts[ 2 ];
+const parentVault = eth.accounts[ 3 ];
 
-function deployExample(cb) {
-    cb = cb || gcb;
+const deployExample = (_cb) => {
+    const cb = _cb || gcb;
     async.series([
-        function(cb) {
-                ProjectController.deploy(web3, {
+        (cb2) => {
+            ProjectController.deploy(web3, {
                 from: owner,
                 name: "Main Vault",
                 baseToken: 0,
                 escapeHatchCaller,
                 escapeHatchDestination,
-                parentProjectController: 0,
+                parentVaultController: 0,
                 parentVault,
-                maxDailyLimit: web3.toWei(100),
-                maxDailyTransactions: 5,
-                maxTransactionLimit: web3.toWei(10),
-                maxTopThreshold: web3.toWei(500),
-                mintWhitelistTimelock: 86400,
+                dailyAmountLimit: web3.toWei(100),
+                dailyTxnLimit: 5,
+                txnAmountLimit: web3.toWei(50),
+                highestAcceptableBalance: web3.toWei(500),
+                lowestAcceptableBalance: web3.toWei(50),
+                whiteListTimelock: 86400,
+                openingTime: 0,
+                closingTime: 86400,
                 verbose: false,
-            }, function(err, _projectController) {
+            }, (err, _projectController) => {
                 if (err) return err;
                 projectController = _projectController;
                 console.log("Project Balancer: " + projectController.contract.address);
-                cb();
+                cb2();
             });
         },
     ], cb);
-}
+};
