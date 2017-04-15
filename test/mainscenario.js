@@ -1,7 +1,6 @@
 const ethConnector = require("ethconnector");
 const assert = require("assert"); // node.js core module
 const async = require("async");
-const path = require("path");
 
 const VaultController = require("../js/vaultcontroller");
 
@@ -118,23 +117,43 @@ describe("Normal Scenario test for VaultController", () => {
             assert.ifError(err);
             done();
         });
-    }).timeout(20000000);
+    }).timeout(20000);
     it("Should read test", (done) => {
         vaultController.contract.test1((err, res) => {
-            assert.ifError(err);
-//            console.log("test1: " + res);
+            if (err) return done(err);
+            console.log("test1: " + res);
             done();
         });
     });
-    it("Should project be added ", (done) => {
+    it("Should state replect the added child vault", (done) => {
         vaultController.getState((err, st) => {
 //            console.log(JSON.stringify(st,null,2));
-            assert.ifError(err);
+            if (err) return done(err);
             assert.equal(st.childVaults.length, 1);
             assert.equal(st.childVaults[ 0 ].name, "Project 1");
             assert.equal(st.childVaults[ 0 ].primaryVault.balance, web3.toWei(20));
             assert.equal(st.primaryVault.balance, web3.toWei(480));
             done();
         });
+    }).timeout(10000);
+    it("Should authorize a spender ES7", async () => {
+        await vaultController.authorizeSpender({
+            name: "Spender 1",
+            addr: spender,
+            dailyAmountLimit: ethConnector.web3.toWei(100),
+            dailyTxnLimit: 5,
+            txnAmountLimit: ethConnector.web3.toWei(10),
+            openingTime: 0,
+            closingTime: 86400,
+        });
+        const st = await vaultController.getState();
+        assert.equal(st.spenders.length, 1);
+        assert.equal(st.spenders[ 0 ].name, "Spender 1");
+        assert.equal(st.spenders[ 0 ].addr, spender);
+        assert.equal(st.spenders[ 0 ].dailyAmountLimit, ethConnector.web3.toWei(100));
+        assert.equal(st.spenders[ 0 ].dailyTxnLimit, 5);
+        assert.equal(st.spenders[ 0 ].txnAmountLimit, ethConnector.web3.toWei(10));
+        assert.equal(st.spenders[ 0 ].openingTime, 0);
+        assert.equal(st.spenders[ 0 ].closingTime, 86400);
     }).timeout(10000);
 });

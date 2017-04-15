@@ -17,8 +17,8 @@ contract VaultController is Owned {
     ///  struct and they are `active`
     struct Spender {
         bool active;            // True if this spender is authorized to make payments
-        address addr;
         string name;
+        address addr;
         uint dailyAmountLimit;  // max amount able to be sent out of the Vault by this spender (in the smallest unit of `baseToken`)
         uint dailyTxnLimit;     // max number of txns from the Vault per day by this spender
         uint txnAmountLimit;    // max amount to be sent from the Vault per day by this spender (in the smallest unit of `baseToken`)
@@ -675,7 +675,7 @@ contract VaultController is Owned {
     }
 
     /// @notice Makes it easy to see when a recipient will be able to receive funds
-    function recipient(uint _idSpender, uint _idx) constant
+    function recipients(uint _idSpender, uint _idx) constant
     returns (
             uint _activationTime,
             string _name,

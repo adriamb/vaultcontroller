@@ -11,12 +11,72 @@ module.exports = class VaultController {
         this.contract = this.web3.eth.contract(VaultControllerAbi).at(address);
     }
 
+    getSpenderStatus(idSpender, _cb) {
+        return asyncfunc((cb) => {
+            let nRecipients;
+            let spender;
+            async.series([
+                (cb1) => {
+                    this.contract.spenders(idSpender, (err, res) => {
+                        if (err) {
+                            cb1(err);
+                            return;
+                        }
+                        if (res[ 0 ]) {  // Is active
+                            spender = {
+                                name: res[ 1 ],
+                                addr: res[ 2 ],
+                                dailyAmountLimit: res[ 3 ],
+                                dailyTxnLimit: res[ 4 ],
+                                txnAmountLimit: res[ 5 ],
+                                openingTime: res[ 6 ],
+                                closingTime: res[ 7 ],
+                                recipients: [],
+                            };
+                        }
+                        cb1();
+                    });
+                },
+                (cb1) => {
+                    this.contract.numberOfRecipients(idSpender, (err, res) => {
+                        if (err) {
+                            cb1(err);
+                            return;
+                        }
+                        nRecipients = res.toNumber();
+                        cb1();
+                    });
+                },
+                (cb1) => {
+                    async.eachSeries(_.range(0, nRecipients), (recipientId, cb2) => {
+                        this.contract.recipients(idSpender, recipientId, (err, res) => {
+                            if (err) { cb2(err); return; }
+                            spender.recipients.push({
+                                activationTime: res[ 0 ].toNumber(),
+                                name: res[ 1 ],
+                                addr: res[ 2 ],
+                            });
+                            cb2();
+                        });
+                    }, cb1);
+                },
+            ], (err) => {
+                if (err) {
+                    cb(err);
+                    return;
+                }
+                cb(null, spender);
+            });
+        }, _cb);
+    }
+
     getState(_cb) {
         return asyncfunc((cb) => {
             const st = {
                 address: this.contract.address,
             };
             let nChildVaults;
+            let nSpenders;
             async.series([
                 (cb1) => {
                     this.contract.name((err, _name) => {
@@ -98,6 +158,26 @@ module.exports = class VaultController {
                             });
                     }, cb1);
                 },
+                (cb1) => {
+                    this.contract.numberOfSpenders((err, res) => {
+                        if (err) { cb1(err); return; }
+                        nSpenders = res.toNumber();
+                        st.spenders = [];
+                        cb1();
+                    });
+                },
+                (cb1) => {
+                    async.eachSeries(_.range(0, nSpenders), (spenderId, cb2) => {
+                        this.getSpenderStatus(spenderId, (err, spender) => {
+                            if (err) {
+                                cb2(err);
+                                return;
+                            }
+                            st.spenders.push(spender);
+                            cb2();
+                        });
+                    }, cb1);
+                },
             ], (err) => {
                 if (err) { cb(err); return; }
                 cb(null, st);
@@ -112,6 +192,17 @@ module.exports = class VaultController {
             "initializeVault",
             Object.assign({}, opts, {
                 extraGas: 250000,
+            }),
+            cb);
+    }
+
+    authorizeSpender(opts, cb) {
+        return sendContractTx(
+            this.web3,
+            this.contract,
+            "authorizeSpender",
+            Object.assign({}, opts, {
+                extraGas: 25000,
             }),
             cb);
     }
