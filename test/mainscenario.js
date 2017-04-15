@@ -1,6 +1,6 @@
 const ethConnector = require("ethconnector");
 const assert = require("assert"); // node.js core module
-const async = require("async");
+const { sendTx, getBalance } = require("runethtx");
 
 const VaultController = require("../js/vaultcontroller");
 
@@ -9,7 +9,6 @@ describe("Normal Scenario test for VaultController", () => {
     let owner;
     let escapeHatchCaller;
     let escapeHatchDestination;
-    let securityGuard;
     let spender;
     let recipient;
     let parentVault;
@@ -18,7 +17,7 @@ describe("Normal Scenario test for VaultController", () => {
 
     let primaryVaultAddr;
 
-    before((done) => {
+    before(async () => {
         const opts = { accounts: [
             { index: 0, balance: `0x${ (new web3.BigNumber(web3.toWei(1000))).toString(16) }` },
             { index: 1, balance: `0x${ (new web3.BigNumber(web3.toWei(1000))).toString(16) }` },
@@ -31,21 +30,17 @@ describe("Normal Scenario test for VaultController", () => {
             { index: 8, balance: `0x${ (new web3.BigNumber(web3.toWei(1000))).toString(16) }` },
             { index: 9, balance: `0x${ (new web3.BigNumber(web3.toWei(1000))).toString(16) }` },
         ] };
-        ethConnector.init("testrpc", opts, (err) => {
-            if (err) { done(err); return; }
-            owner = ethConnector.accounts[ 0 ];
-            escapeHatchCaller = ethConnector.accounts[ 1 ];
-            escapeHatchDestination = ethConnector.accounts[ 2 ];
-            securityGuard = ethConnector.accounts[ 3 ];
-            spender = ethConnector.accounts[ 4 ];
-            recipient = ethConnector.accounts[ 5 ];
-            parentVault = ethConnector.accounts[ 6 ];
-            admin = ethConnector.accounts[ 7 ];
-            done();
-        });
+        await ethConnector.init("testrpc", opts);
+        owner = ethConnector.accounts[ 0 ];
+        escapeHatchCaller = ethConnector.accounts[ 1 ];
+        escapeHatchDestination = ethConnector.accounts[ 2 ];
+        spender = ethConnector.accounts[ 4 ];
+        recipient = ethConnector.accounts[ 5 ];
+        parentVault = ethConnector.accounts[ 6 ];
+        admin = ethConnector.accounts[ 7 ];
     });
-    it("should deploy all the contracts ", (done) => {
-        VaultController.deploy(ethConnector.web3, {
+    it("should deploy all the contracts ", async () => {
+        vaultController = await VaultController.deploy(ethConnector.web3, {
             from: owner,
             name: "Main Vault",
             baseToken: 0,
@@ -62,45 +57,26 @@ describe("Normal Scenario test for VaultController", () => {
             openingTime: 0,
             closingTime: 86400,
             verbose: false,
-        }, (err, _vaultController) => {
-            assert.ifError(err);
-            assert.ok(_vaultController.contract.address);
-            vaultController = _vaultController;
-            done();
         });
+        const st = await vaultController.getState();
+        primaryVaultAddr = st.primaryVault.address;
+        assert.equal(owner, st.owner);
     }).timeout(20000);
-    it("Should primary vault be created", (done) => {
-        vaultController.getState((err, st) => {
-            assert.ifError(err);
-            assert.equal(owner, st.owner);
-            primaryVaultAddr = st.primaryVault.address;
-            done();
-        });
-    }).timeout(6000);
-    it("Should send to the primary vault", (done) => {
-        web3.eth.sendTransaction({
+    it("Should send to the primary vault", async () => {
+        await sendTx(ethConnector.web3, {
             from: owner,
             to: primaryVaultAddr,
             value: web3.toWei(500),
             gas: 200000,
-        }, (err) => {
-            assert.ifError(err);
-            web3.eth.getBalance(primaryVaultAddr, (err2, res) => {
-                assert.ifError(err2);
-                assert.equal(res, web3.toWei(500));
-                done();
-            });
         });
-    });
-    it("Should balance of primary vault be decresed", (done) => {
-        vaultController.getState((err, st) => {
-            assert.ifError(err);
-            assert.equal(st.primaryVault.balance, web3.toWei(500));
-            done();
-        });
-    }).timeout(6000);
-    it("Should add a child vault", (done) => {
-        vaultController.createChildVault({
+
+        const st = await vaultController.getState();
+        assert.equal(st.primaryVault.balance, web3.toWei(500));
+        const balance = await getBalance(ethConnector.web3, primaryVaultAddr);
+        assert.equal(balance, web3.toWei(500));
+    }).timeout(6000000);
+    it("Should add a child vault", async () => {
+        await vaultController.createChildVault({
             from: owner,
             name: "Project 1",
             admin,
@@ -113,30 +89,21 @@ describe("Normal Scenario test for VaultController", () => {
             openingTime: 0,
             closingTime: 86400,
             verbose: false,
-        }, (err) => {
-            assert.ifError(err);
-            done();
         });
+        const st = await vaultController.getState();
+        assert.equal(st.childVaults.length, 1);
+        assert.equal(st.childVaults[ 0 ].name, "Project 1");
+        assert.equal(st.childVaults[ 0 ].primaryVault.balance, web3.toWei(20));
+        assert.equal(st.primaryVault.balance, web3.toWei(480));
     }).timeout(20000);
-    it("Should read test", (done) => {
+/*    it("Should read test", (done) => {
         vaultController.contract.test1((err, res) => {
             if (err) return done(err);
             console.log("test1: " + res);
             done();
         });
-    });
-    it("Should state replect the added child vault", (done) => {
-        vaultController.getState((err, st) => {
-//            console.log(JSON.stringify(st,null,2));
-            if (err) return done(err);
-            assert.equal(st.childVaults.length, 1);
-            assert.equal(st.childVaults[ 0 ].name, "Project 1");
-            assert.equal(st.childVaults[ 0 ].primaryVault.balance, web3.toWei(20));
-            assert.equal(st.primaryVault.balance, web3.toWei(480));
-            done();
-        });
-    }).timeout(10000);
-    it("Should authorize a spender ES7", async () => {
+    }); */
+    it("Should authorize a spender", async () => {
         await vaultController.authorizeSpender({
             name: "Spender 1",
             addr: spender,
