@@ -2,12 +2,18 @@ pragma solidity ^0.4.10;
 
 import "../node_modules/vaultcontract/contracts/Vault.sol";
 
+
+
+/////////////////////////////////
+// VaultController
+/////////////////////////////////
+
 contract VaultController is Owned {
 
     /// @dev The `Recipient` is an address that is allowed to receive `baseToken`
     ///  from this controller's Vault after `timeLockExpiration` has passed
     struct Recipient {
-        uint activationTime;
+        uint activationTime; // the first moment they can start receiving funds
         address addr;
         string name;
     }
@@ -264,8 +270,11 @@ contract VaultController is Owned {
         vc.changeOwner(_admin);
     }
 
-    /// @notice `onlyOwner` Cancels a `childVaultController`
-    function cancelChildVault(uint _vaultControllerId) initialized notCanceled onlyOwner {
+    /// @notice `onlyOwner` Cancels a childVault; this is called when a
+    ///  parentVaultController wants to cancel a childVault
+    function cancelChildVault(
+        uint _vaultControllerId
+        ) initialized notCanceled onlyOwner {
         if (_vaultControllerId >= childVaultControllers.length) throw;
         VaultController vc= childVaultControllers[_vaultControllerId];
 
@@ -296,8 +305,7 @@ contract VaultController is Owned {
         }
     }
 
-    /// @notice `onlyOwner` Cancels all projects and empties the vaults into the
-    ///  `escapeHatchDestination`
+    /// @notice `onlyOwner` Automates that cancellation of all childVaults
     function cancelAllChildVaults() onlyOwnerOrParent initialized {
         uint i;
         for (i=0; i<childVaultControllers.length; i++) {
@@ -437,7 +445,7 @@ contract VaultController is Owned {
         uint idSpender = addr2spenderId[msg.sender];
         if (idSpender == 0) throw;
         // addr2spenderId stores the position in the array relative to 1
-        // so we substract one to make it relative to 0.
+        // so we subtract one to make it relative to 0.
         idSpender --;
         Spender s = spenders[idSpender];
 
@@ -669,17 +677,19 @@ contract VaultController is Owned {
 /////
 
 
-    /// @notice Makes it easy to see how many projects are fed by the primaryVault
+    /// @notice Makes it easy to see how many childVaults are fed by the this Vault
     function numberOfChildVaults() constant returns (uint) {
         return childVaultControllers.length;
     }
 
+    /// @notice Makes it easy to see how many different spenders are allowed to
+    ///  use this Vault
     function numberOfSpenders() constant returns (uint) {
         return spenders.length;
     }
 
-
-    /// @notice Makes it easy to see how many spenders are allowed in each project
+    /// @notice Makes it easy to see how many recipients are allowed to receive
+    ///  funds from `_idSpender`
     function numberOfRecipients(uint _idSpender) constant
     returns (uint) {
         if (_idSpender >= spenders.length) throw;
@@ -719,7 +729,17 @@ contract VaultController is Owned {
     event VaultsLimitChanged();
 }
 
-/// @notice Creates its own contract that is called when a new vault needs to be made
+
+/////////////////////////////////
+// VaultFactory
+/////////////////////////////////
+
+
+/// @dev Creates the Factory contract that creates `vault` contracts, this is
+///  the second contract to be deployed when building this system, in solidity
+///  if there is no constructor function explicitly in the contract, it is
+///  implicitly included and when deploying this contract, that is the function
+///  that is called
 contract VaultFactory {
     function create(address _baseToken, address _escapeHatchCaller, address _escapeHatchDestination) returns (Vault) {
         Vault v = new Vault(_baseToken, _escapeHatchCaller, _escapeHatchDestination, 0,0,0,0);
@@ -728,9 +748,33 @@ contract VaultFactory {
     }
 }
 
-/// @notice Creates its own contract that is called when a new vaultController
-///  needs to be made
+
+/////////////////////////////////
+// VaultControllerFactory
+/////////////////////////////////
+
+
+/// @dev Creates the Factory contract that creates `vaultController` contracts,
+///  this is the second contract to be deployed when building this system, in
+///  solidity if there is no constructor function explicitly in the contract, it
+///  is implicitly included and when deploying this contract, that is the
+///  function that is called
 contract VaultControllerFactory {
+    /// @notice Creates  `vaultController` contracts
+    /// @param _name Name of the `vaultController` you are deploying
+    /// @param _vaultFactory Address of the `vaultFactory` that will create the
+    ///  Vaults for this system
+    /// @param _baseToken The address of the token that is used as a store value
+    ///  for this contract, 0x0 in case of ether. The token must have the ERC20
+    ///  standard `balanceOf()` and `transfer()` functions
+    /// @param _escapeHatchDestination The address of a safe location (usu
+    ///  Multisig) to send the `baseToken` held in this contract
+    /// @param _escapeHatchCaller The address of a trusted account or contract
+    ///  to call `escapeHatch()` to send the `baseToken` in this contract to the
+    ///  `escapeHatchDestination` it would be ideal that `escapeHatchCaller`
+    ///  cannot move funds out of `escapeHatchDestination`
+    /// @param _parentVault The Vault that feeds the newly created Vault
+    /// @return VaultController The newly created vault controller
     function create(
         string _name,
         address _vaultFactory,
