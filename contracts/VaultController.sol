@@ -1,4 +1,4 @@
-pragma solidity ^0.4.6;
+pragma solidity ^0.4.10;
 
 import "../node_modules/vaultcontract/contracts/Vault.sol";
 
@@ -265,7 +265,7 @@ contract VaultController is Owned {
     }
 
     /// @notice `onlyOwner` Cancels a `childVaultController`
-    function cancelChildVaultController(uint _vaultControllerId) initialized notCanceled onlyOwner {
+    function cancelChildVault(uint _vaultControllerId) initialized notCanceled onlyOwner {
         if (_vaultControllerId >= childVaultControllers.length) throw;
         VaultController vc= childVaultControllers[_vaultControllerId];
 
@@ -276,7 +276,7 @@ contract VaultController is Owned {
     /// children, emptying them to the `parentVault`
     function cancelVault() onlyOwnerOrParent initialized {
 
-        cancelAllChildControllers();
+        cancelAllChildVaults();
 
         uint vaultBalance = primaryVault.getBalance();
 
@@ -298,10 +298,10 @@ contract VaultController is Owned {
 
     /// @notice `onlyOwner` Cancels all projects and empties the vaults into the
     ///  `escapeHatchDestination`
-    function cancelAllChildControllers() onlyOwnerOrParent initialized {
+    function cancelAllChildVaults() onlyOwnerOrParent initialized {
         uint i;
         for (i=0; i<childVaultControllers.length; i++) {
-            cancelChildVaultController(i);
+            cancelChildVault(i);
         }
     }
 
