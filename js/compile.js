@@ -11,5 +11,4 @@ ethConnector.compile(
         } else {
             process.exit(0);
         }
-    }
-);
+    });

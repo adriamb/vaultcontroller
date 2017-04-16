@@ -40,7 +40,7 @@ contract VaultController is Owned {
     mapping(address => uint) addr2vaultControllerId;  // An index of the childVaults' addresses
 
     string public name;
-    bool canceled;
+    bool public canceled;
 
 
     VaultController public parentVaultController; // Controller of the Vault that feeds this Vault (if there is one)
@@ -261,8 +261,6 @@ contract VaultController is Owned {
             _closingTime
         );
 
-                return;
-
         vc.changeOwner(_admin);
     }
 
@@ -375,6 +373,10 @@ contract VaultController is Owned {
     }
 
     uint public test1; // for testing
+    uint public test2; // for testing
+    uint public test3; // for testing
+    uint public test4; // for testing
+    uint public test5; // for testing
 
     /// @notice A `childVaultController` calls this function to top up their
     ///  Vault's Balance to the `highestAcceptableBalance`
@@ -627,10 +629,16 @@ contract VaultController is Owned {
         }
 
         // Checks on the transaction limits
-        if (spender.accAmountInDay + _amount > spender.dailyAmountLimit) return false;
+/*        if (spender.accAmountInDay + _amount > spender.dailyAmountLimit) return false;
         if (spender.accTxsInDay >= spender.dailyTxnLimit) return false;
         if (_amount > spender.txnAmountLimit) return false;
         if (timeSinceOpening >= windowTimeLength) return false;
+*/
+        if (  (spender.accAmountInDay + _amount > spender.dailyAmountLimit)
+            ||(spender.accTxsInDay >= spender.dailyTxnLimit)
+            ||(_amount > spender.txnAmountLimit)
+            ||(timeSinceOpening >= windowTimeLength))
+           return false;
 
         // Checks that the recipient has waited out the `ProjectWhitelistTimelock`
 
@@ -640,9 +648,15 @@ contract VaultController is Owned {
 
         Recipient r = spender.recipients[idRecipient];
 
-        if ((r.activationTime == 0) ||
-            (r.activationTime > now))
+
+        if (r.activationTime == 0) {
             return false;
+        }
+
+        if (now < r.activationTime) {
+            return false;
+        }
+
 
         spender.accAmountInDay += _amount;
         spender.accTxsInDay ++;

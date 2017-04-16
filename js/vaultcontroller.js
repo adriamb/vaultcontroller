@@ -77,21 +77,41 @@ module.exports = class VaultController {
             };
             let nChildVaults;
             let nSpenders;
+            const extractProp = (prop, opts) => (cb1) => {
+                const params = Object.assign({ addr: false }, opts);
+                let dest = prop;
+                if (params.addr) dest += "Addr";
+                this.contract[ prop ]((err, _prop) => {
+                    if (err) { cb1(err); return; }
+                    st[ dest ] = _prop;
+                    cb1();
+                });
+            };
             async.series([
-                (cb1) => {
-                    this.contract.name((err, _name) => {
-                        if (err) { cb1(err); return; }
-                        st.name = _name;
-                        cb1();
-                    });
-                },
-                (cb1) => {
-                    this.contract.owner((err, _owner) => {
-                        if (err) { cb1(err); return; }
-                        st.owner = _owner;
-                        cb1();
-                    });
-                },
+                extractProp("name"),
+                extractProp("owner"),
+                extractProp("primaryVault", { addr: true }),
+                extractProp("vaultFactory", { addr: true }),
+                extractProp("vaultControllerFactory", { addr: true }),
+                extractProp("highestAcceptableBalance"),
+                extractProp("lowestAcceptableBalance"),
+                extractProp("canceled"),
+                extractProp("parentVaultController"),
+                extractProp("escapeHatchCaller"),
+                extractProp("escapeHatchDestination"),
+                extractProp("baseToken"),
+                extractProp("parentVault"),
+                extractProp("dailyAmountLimit"),
+                extractProp("dailyTxnLimit"),
+                extractProp("txnAmountLimit"),
+                extractProp("highestAcceptableBalance"),
+                extractProp("lowestAcceptableBalance"),
+                extractProp("whiteListTimelock"),
+                extractProp("openingTime"),
+                extractProp("closingTime"),
+                extractProp("accTxsInDay"),
+                extractProp("accAmountInDay"),
+                extractProp("dayOfLastTx"),
                 (cb1) => {
                     this.contract.primaryVault((err, _primaryVaultAddr) => {
                         if (err) { cb1(err); return; }
@@ -100,38 +120,10 @@ module.exports = class VaultController {
                     });
                 },
                 (cb1) => {
-                    this.contract.vaultFactory((err, _vaultFactoryAddr) => {
-                        if (err) { cb1(err); return; }
-                        st.vaultFactoryAddr = _vaultFactoryAddr;
-                        cb1();
-                    });
-                },
-                (cb1) => {
-                    this.contract.vaultControllerFactory((err, _vaultControllerFactoryAddr) => {
-                        if (err) { cb1(err); return; }
-                        st.vaultControllerFactoryAddr = _vaultControllerFactoryAddr;
-                        cb1();
-                    });
-                },
-                (cb1) => {
                     const vault = new Vault(this.web3, st.primaryVaultAddr);
                     vault.getState((err, _st) => {
                         if (err) { cb1(err); return; }
                         st.primaryVault = _st;
-                        cb1();
-                    });
-                },
-                (cb1) => {
-                    this.contract.highestAcceptableBalance((err, _highestAcceptableBalance) => {
-                        if (err) { cb1(err); return; }
-                        st.highestAcceptableBalance = _highestAcceptableBalance;
-                        cb1();
-                    });
-                },
-                (cb1) => {
-                    this.contract.lowestAcceptableBalance((err, _lowestAcceptableBalance) => {
-                        if (err) { cb1(err); return; }
-                        st.lowestAcceptableBalance = _lowestAcceptableBalance;
                         cb1();
                     });
                 },
@@ -203,6 +195,28 @@ module.exports = class VaultController {
             "authorizeSpender",
             Object.assign({}, opts, {
                 extraGas: 25000,
+            }),
+            cb);
+    }
+
+    authorizeRecipient(opts, cb) {
+        return sendContractTx(
+            this.web3,
+            this.contract,
+            "authorizeRecipient",
+            Object.assign({}, opts, {
+                extraGas: 25000,
+            }),
+            cb);
+    }
+
+    sendToAuthorizedRecipient(opts, cb) {
+        return sendContractTx(
+            this.web3,
+            this.contract,
+            "sendToAuthorizedRecipient",
+            Object.assign({}, opts, {
+                gas: 4000000,
             }),
             cb);
     }

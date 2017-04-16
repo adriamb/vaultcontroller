@@ -5,7 +5,8 @@
   "main": "dist/vaultcontroller.js",
   "scripts": {
     "test": "mocha --compilers js:babel-core/register",
-    "build": "rm -rf dist/* && babel-node js/compile.js && babel js/vaultcontroller.js -o dist/vaultcontroller.js"
+    "build": "rm -rf dist/* && babel-node js/compile.js && babel js/vaultcontroller.js -o dist/vaultcontroller.js",
+    "compile": "node ./js/compile.js"
   },
   "repository": {
     "type": "git",
@@ -31,8 +32,9 @@
   "dependencies": {
     "async": "^2.1.4",
     "lodash": "^4.17.4",
-    "runethtx": "0.0.7",
-    "vaultcontract": "^0.3.1"
+    "mocha": "^3.2.0",
+    "runethtx": "0.0.8",
+    "vaultcontract": "^0.3.3"
   },
   "devDependencies": {
     "assert-callback": "^0.1.0",
@@ -46,7 +48,7 @@
     "eslint-plugin-import": "^2.2.0",
     "eslint-plugin-jsx-a11y": "^3.0.2",
     "eslint-plugin-react": "^6.9.0",
-    "ethconnector": "0.0.24",
+    "ethconnector": "0.0.25",
     "rimraf": "^2.5.4"
   }
 }
