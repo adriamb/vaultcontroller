@@ -1,16 +1,16 @@
-const Web3 = require("web3");
+var Web3 = require("web3");
 // create an instance of web3 using the HTTP provider.
 // NOTE in mist web3 is already available, so check first if its available before instantiating
-const web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
+var web3 = new Web3(new Web3.providers.HttpProvider("http://localhost:8545"));
 
-const BigNumber = require("bignumber.js");
+var BigNumber = require("bignumber.js");
 
-const eth = web3.eth;
-const async = require("async");
+var eth = web3.eth;
+var async = require("async");
 
-const ProjectController = require("./js/vaultcontroller.js");
+var VaultController = require("./js/vaultcontroller.js");
 
-const gcb = (err, res) => {
+var gcb = (err, res) => {
     if (err) {
         console.log("ERROR: "+err);
     } else {
@@ -18,18 +18,19 @@ const gcb = (err, res) => {
     }
 };
 
-let projectController;
+var vaultController;
 
-const owner = eth.accounts[ 0 ];
-const escapeHatchCaller = eth.accounts[ 1 ];
-const escapeHatchDestination = eth.accounts[ 2 ];
-const parentVault = eth.accounts[ 3 ];
+var owner = eth.accounts[ 0 ];
+var escapeHatchCaller = eth.accounts[ 1 ];
+var escapeHatchDestination = eth.accounts[ 2 ];
+var parentVault = eth.accounts[ 3 ];
+var admin = eth.accounts[ 4 ];
 
-const deployExample = (_cb) => {
+var deployExample = (_cb) => {
     const cb = _cb || gcb;
     async.series([
         (cb2) => {
-            ProjectController.deploy(web3, {
+            VaultController.deploy(web3, {
                 from: owner,
                 name: "Main Vault",
                 baseToken: 0,
@@ -46,12 +47,35 @@ const deployExample = (_cb) => {
                 openingTime: 0,
                 closingTime: 86400,
                 verbose: false,
-            }, (err, _projectController) => {
+            }, (err, _vaultController) => {
                 if (err) return err;
-                projectController = _projectController;
-                console.log("Project Balancer: " + projectController.contract.address);
+                vaultController = _vaultController;
+                console.log("Vault Controller: " + vaultController.contract.address);
                 cb2();
             });
         },
     ], cb);
+};
+
+var addChildVault = (_cb) => {
+    const cb = _cb || gcb;
+    vaultController.createChildVault({
+        from: owner,
+        name: "Project 1",
+        admin,
+        dailyAmountLimit: web3.toWei(100),
+        dailyTxnLimit: 5,
+        txnAmountLimit: web3.toWei(10),
+        highestAcceptableBalance: web3.toWei(20),
+        lowestAcceptableBalance: web3.toWei(2),
+        whiteListTimelock: 86400,
+        openingTime: 0,
+        closingTime: 86400,
+        verbose: false,
+    }, cb);
+};
+
+var getState = (_cb) => {
+    const cb = _cb || gcb;
+    vaultController.getState(cb);
 };
