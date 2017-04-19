@@ -290,6 +290,10 @@ contract VaultController is Owned {
         uint vaultBalance = primaryVault.getBalance();
 
         if ((vaultBalance > 0) || (!canceled)) {
+            canceled = true;
+            highestAcceptableBalance = 0;
+            lowestAcceptableBalance = 0;
+            owner = parentVaultController;
             primaryVault.authorizePayment(
               "CANCEL CHILD VAULT",
               bytes32(msg.sender),
@@ -297,10 +301,6 @@ contract VaultController is Owned {
               vaultBalance,
               0
             );
-            canceled = true;
-            highestAcceptableBalance = 0;
-            lowestAcceptableBalance = 0;
-            owner = parentVaultController;
             VaultCanceled(msg.sender);
         }
     }
@@ -365,6 +365,8 @@ contract VaultController is Owned {
         uint _highestAcceptableBalance,
         uint _lowestAcceptableBalance
     ) onlyParentOrOwnerIfNoParent initialized notCanceled {
+        if (_lowestAcceptableBalance > _highestAcceptableBalance) throw;
+
         dailyAmountLimit = _dailyAmountLimit;
         dailyTxnLimit = _dailyTxnLimit;
         txnAmountLimit = _txnAmountLimit;
@@ -389,7 +391,6 @@ contract VaultController is Owned {
     /// @notice A `childVaultController` calls this function to top up their
     ///  Vault's Balance to the `highestAcceptableBalance`
     function topUpVault() initialized notCanceled {
-        if (canceled) throw;
         uint vaultControllerId = addr2vaultControllerId[msg.sender];
         if (addr2vaultControllerId[msg.sender] == 0) throw;
         vaultControllerId--;
@@ -603,6 +604,7 @@ contract VaultController is Owned {
             dayOfLastTx = actualDay;
         }
         // Checks on the transaction limits
+        if (accAmountInDay + _amount < accAmountInDay) throw; // Overflow
         if (accAmountInDay + _amount > dailyAmountLimit) return false;
         if (accTxsInDay >= dailyTxnLimit) return false;
         if (_amount > txnAmountLimit) return false;
@@ -637,16 +639,12 @@ contract VaultController is Owned {
         }
 
         // Checks on the transaction limits
-/*        if (spender.accAmountInDay + _amount > spender.dailyAmountLimit) return false;
+        if (spender.accAmountInDay + _amount < spender.accAmountInDay) throw; // Overflow
+        if (spender.accAmountInDay + _amount > spender.dailyAmountLimit) return false;
         if (spender.accTxsInDay >= spender.dailyTxnLimit) return false;
         if (_amount > spender.txnAmountLimit) return false;
         if (timeSinceOpening >= windowTimeLength) return false;
-*/
-        if (  (spender.accAmountInDay + _amount > spender.dailyAmountLimit)
-            ||(spender.accTxsInDay >= spender.dailyTxnLimit)
-            ||(_amount > spender.txnAmountLimit)
-            ||(timeSinceOpening >= windowTimeLength))
-           return false;
+
 
         // Checks that the recipient has waited out the `ProjectWhitelistTimelock`
 
