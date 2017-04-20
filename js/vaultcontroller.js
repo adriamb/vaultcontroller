@@ -235,10 +235,12 @@ module.exports = class VaultController {
                         (err, txId) => {
                             if (err) {
                                 cb1(err);
+                                return;
                             }
                             this.web3.eth.getTransactionReceipt(txId, (err2, receipt) => {
                                 if (err2) {
                                     cb1(err2);
+                                    return;
                                 }
                                 // log 0 -> NewOwner
                                 // log 1 -> NewProject
@@ -255,6 +257,62 @@ module.exports = class VaultController {
                         this.contract,
                         "initializeChildVault",
                         params,
+                        cb1);
+                },
+            ], (err) => {
+                if (err) {
+                    cb(err);
+                    return;
+                }
+                this.contract.childVaultControllers(
+                    params.childVaultId,
+                    (err2, _childVaultCtrlrAddr) => {
+                        if (err2) {
+                            cb(err2);
+                            return;
+                        }
+                        const childVaultController =
+                            new VaultController(this.web3, _childVaultCtrlrAddr);
+                        cb(null, childVaultController);
+                    });
+            });
+        }, _cb);
+    }
+
+    cancelVault(opts, _cb) {
+        return asyncfunc((cb) => {
+            let canceled;
+            const checkCanceled = (cb3) => {
+                this.contract.canceled((err, res) => {
+                    if (err) {
+                        cb3(err);
+                        return;
+                    }
+                    canceled = res;
+                    cb3();
+                });
+            };
+            async.series([
+                checkCanceled,
+                (cb1) => {
+                    async.whilst(
+                        () => !canceled,
+                        (cb2) => {
+                            sendContractTx(
+                                this.web3,
+                                this.contract,
+                                "cancelVault",
+                                Object.assign({}, opts, {
+                                    gas: 2000000,
+                                }),
+                                (err) => {
+                                    if (err) {
+                                        cb2(err);
+                                        return;
+                                    }
+                                    checkCanceled(cb2);
+                                });
+                        },
                         cb1);
                 },
             ], cb);

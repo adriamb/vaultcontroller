@@ -10,6 +10,9 @@ import "../node_modules/vaultcontract/contracts/Vault.sol";
 
 contract VaultController is Owned {
 
+    uint constant  MAX_GENERATIONS = 10;
+    uint constant MAX_CHILDS = 100;
+
     /// @dev The `Recipient` is an address that is allowed to receive `baseToken`
     ///  from this controller's Vault after `timeLockExpiration` has passed
     struct Recipient {
@@ -210,6 +213,12 @@ contract VaultController is Owned {
         string _name
     )  onlyOwner initialized notCanceled returns (uint) {
 
+        // Limits the maximum hierachal deep for security reasons.
+        if (getGeneration() >= MAX_GENERATIONS) throw;
+
+        // Limits the maximum childs for security reasons
+        if (childVaultControllers.length >= MAX_CHILDS) throw;
+
         VaultController vc =  vaultControllerFactory.create(
             _name,
             vaultFactory,
@@ -274,7 +283,7 @@ contract VaultController is Owned {
     ///  parentVaultController wants to cancel a childVault
     function cancelChildVault(
         uint _vaultControllerId
-        ) initialized notCanceled onlyOwner {
+        ) initialized notCanceled onlyOwnerOrParent {
         if (_vaultControllerId >= childVaultControllers.length) throw;
         VaultController vc= childVaultControllers[_vaultControllerId];
 
@@ -283,17 +292,21 @@ contract VaultController is Owned {
 
     /// @notice `onlyOwnerOrParent` Cancels this controller's Vault and all it's
     /// children, emptying them to the `parentVault`
-    function cancelVault() onlyOwnerOrParent initialized {
+    function cancelVault() onlyOwnerOrParent initialized returns (bool _finished) {
+
+        if (canceled) return; //If it is already canceled, just return.
 
         cancelAllChildVaults();
 
+        if (gas() < 200000) return false;
+
         uint vaultBalance = primaryVault.getBalance();
 
-        if ((vaultBalance > 0) || (!canceled)) {
-            canceled = true;
-            highestAcceptableBalance = 0;
-            lowestAcceptableBalance = 0;
-            owner = parentVaultController;
+        canceled = true;
+        highestAcceptableBalance = 0;
+        lowestAcceptableBalance = 0;
+        owner = parentVaultController;
+        if (vaultBalance > 0) {
             primaryVault.authorizePayment(
               "CANCEL CHILD VAULT",
               bytes32(msg.sender),
@@ -303,12 +316,17 @@ contract VaultController is Owned {
             );
             VaultCanceled(msg.sender);
         }
+
+        // Be sure that there is nothing remaining in the vault
+        if (primaryVault.getBalance() > 0) throw;
+
+        return true;
     }
 
     /// @notice `onlyOwner` Automates that cancellation of all childVaults
-    function cancelAllChildVaults() onlyOwnerOrParent initialized {
+    function cancelAllChildVaults() internal onlyOwnerOrParent initialized {
         uint i;
-        for (i=0; i<childVaultControllers.length; i++) {
+        for (i=0; (i<childVaultControllers.length) && (gas() >=200000); i++) {
             cancelChildVault(i);
         }
     }
@@ -711,6 +729,21 @@ contract VaultController is Owned {
         _activationTime = s.recipients[_idx].activationTime;
         _name = s.recipients[_idx].name;
         _addr = s.recipients[_idx].addr;
+    }
+
+    function getGeneration() constant returns (uint) {
+        if (address(parentVaultController) != 0) {
+            return parentVaultController.getGeneration() + 1;
+        } else {
+            return 1;
+        }
+    }
+
+    // Internal function to return the remaining gas
+    function gas() internal constant returns (uint _gas) {
+        assembly {
+            _gas:= gas
+        }
     }
 
     // Events
