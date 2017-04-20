@@ -53,7 +53,7 @@ contract VaultController is Owned {
 
 
     VaultController public parentVaultController; // Controller of the Vault that feeds this Vault (if there is one)
-    address public parentVault;                   // Address of the Vault that feeds this Vault (if there is one)
+    address public parentVault;                   // Address that feeds this Vault, and recieves money when this Vault overflows 
     Vault public primaryVault;     // Vault that is funding all the childVaults
 
     VaultFactory public vaultFactory;  // the contract that is used to create vaults
@@ -145,7 +145,7 @@ contract VaultController is Owned {
         address _escapeHatchCaller,
         address _escapeHatchDestination,
         address _parentVaultController,     // 0x0 if a `primaryVault`
-        address _parentVault               // 0x0 if a `primaryVault`
+        address _parentVault               // NEVER 0x0
     ) {
 
         // Initializing all the variables
@@ -806,7 +806,7 @@ contract VaultControllerFactory {
     ///  to call `escapeHatch()` to send the `baseToken` in this contract to the
     ///  `escapeHatchDestination` it would be ideal that `escapeHatchCaller`
     ///  cannot move funds out of `escapeHatchDestination`
-    /// @param _parentVault The Vault that feeds the newly created Vault
+    /// @param _parentVault The address that feeds the newly created Vault, often a Vault
     /// @return VaultController The newly created vault controller
     function create(
         string _name,
