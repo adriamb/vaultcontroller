@@ -187,6 +187,8 @@ contract VaultController is Owned {
         highestAcceptableBalance = _highestAcceptableBalance;
         lowestAcceptableBalance = _lowestAcceptableBalance;
         whiteListTimelock = _whiteListTimelock;
+        openingTime = _openingTime;
+        closingTime = _closingTime;
 
         primaryVault = vaultFactory.create(baseToken, escapeHatchCaller, escapeHatchDestination);
 
