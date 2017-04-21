@@ -1,14 +1,12 @@
-pragma solidity ^0.4.10;
+pragma solidity ^0.4.8;
 
-import "../node_modules/vaultcontract/contracts/Vault.sol";
-
-
+import "./VaultControllerI.sol";
 
 /////////////////////////////////
 // VaultController
 /////////////////////////////////
 
-contract VaultController is Owned {
+contract VaultController is VaultControllerI {
 
     uint constant  MAX_GENERATIONS = 10;
     uint constant MAX_CHILDS = 100;
@@ -56,8 +54,8 @@ contract VaultController is Owned {
     address public parentVault;                   // Address that feeds this Vault, and recieves money when this Vault overflows 
     Vault public primaryVault;     // Vault that is funding all the childVaults
 
-    VaultFactory public vaultFactory;  // the contract that is used to create vaults
-    VaultControllerFactory public vaultControllerFactory; // the contract that is used to create vaultControllers
+    VaultFactoryI public vaultFactory;  // the contract that is used to create vaults
+    VaultControllerFactoryI public vaultControllerFactory; // the contract that is used to create vaultControllers
 
     address public baseToken;   // The address of the token that is used as a store value
                                 //  for this contract, 0x0 in case of ether. The token must have the ERC20
@@ -149,8 +147,8 @@ contract VaultController is Owned {
     ) {
 
         // Initializing all the variables
-        vaultFactory = VaultFactory(_vaultFactory);
-        vaultControllerFactory = VaultControllerFactory(_vaultControllerFactory);
+        vaultFactory = VaultFactoryI(_vaultFactory);
+        vaultControllerFactory = VaultControllerFactoryI(_vaultControllerFactory);
         baseToken = _baseToken;
         escapeHatchCaller = _escapeHatchCaller;
         escapeHatchDestination = _escapeHatchDestination;
@@ -611,9 +609,12 @@ contract VaultController is Owned {
 
         uint timeSinceOpening = now - (actualDay * 86400 + openingTime);
 
-        uint windowTimeLength = closingTime >= openingTime ?
-                                        closingTime - openingTime :
-                                        86400 + closingTime - openingTime;
+        uint windowTimeLength;
+        if ( closingTime >= openingTime ) {
+            windowTimeLength = closingTime - openingTime ;
+        } else {
+            windowTimeLength = 86400 + closingTime - openingTime;
+        }
 
         if (canceled) return false;
 
@@ -647,9 +648,13 @@ contract VaultController is Owned {
 
         uint timeSinceOpening = now - (actualDay * 86400 + spender.openingTime);
 
-        uint windowTimeLength = spender.closingTime >= spender.openingTime ?
-                                        spender.closingTime - spender.openingTime :
-                                        86400 + spender.closingTime - spender.openingTime;
+        uint windowTimeLength;
+
+        if (spender.closingTime >= spender.openingTime) {
+            windowTimeLength = spender.closingTime - spender.openingTime;    
+        } else {
+            windowTimeLength = 86400 + spender.closingTime - spender.openingTime;
+        }
 
         // Resets the daily transfer counters
         if (spender.dayOfLastTx < actualDay) {
@@ -763,70 +768,6 @@ contract VaultController is Owned {
 }
 
 
-/////////////////////////////////
-// VaultFactory
-/////////////////////////////////
 
 
-/// @dev Creates the Factory contract that creates `vault` contracts, this is
-///  the second contract to be deployed when building this system, in solidity
-///  if there is no constructor function explicitly in the contract, it is
-///  implicitly included and when deploying this contract, that is the function
-///  that is called
-contract VaultFactory {
-    function create(address _baseToken, address _escapeHatchCaller, address _escapeHatchDestination) returns (Vault) {
-        Vault v = new Vault(_baseToken, _escapeHatchCaller, _escapeHatchDestination, 0,0,0,0);
-        v.changeOwner(msg.sender);
-        return v;
-    }
-}
 
-
-/////////////////////////////////
-// VaultControllerFactory
-/////////////////////////////////
-
-
-/// @dev Creates the Factory contract that creates `vaultController` contracts,
-///  this is the second contract to be deployed when building this system, in
-///  solidity if there is no constructor function explicitly in the contract, it
-///  is implicitly included and when deploying this contract, that is the
-///  function that is called
-contract VaultControllerFactory {
-    /// @notice Creates  `vaultController` contracts
-    /// @param _name Name of the `vaultController` you are deploying
-    /// @param _vaultFactory Address of the `vaultFactory` that will create the
-    ///  Vaults for this system
-    /// @param _baseToken The address of the token that is used as a store value
-    ///  for this contract, 0x0 in case of ether. The token must have the ERC20
-    ///  standard `balanceOf()` and `transfer()` functions
-    /// @param _escapeHatchDestination The address of a safe location (usu
-    ///  Multisig) to send the `baseToken` held in this contract
-    /// @param _escapeHatchCaller The address of a trusted account or contract
-    ///  to call `escapeHatch()` to send the `baseToken` in this contract to the
-    ///  `escapeHatchDestination` it would be ideal that `escapeHatchCaller`
-    ///  cannot move funds out of `escapeHatchDestination`
-    /// @param _parentVault The address that feeds the newly created Vault, often a Vault
-    /// @return VaultController The newly created vault controller
-    function create(
-        string _name,
-        address _vaultFactory,
-        address _baseToken,
-        address _escapeHatchCaller,
-        address _escapeHatchDestination,
-        address _parentVault
-    ) returns(VaultController) {
-        VaultController vc = new VaultController(
-            _name,
-            _vaultFactory,
-            address(this),
-            _baseToken,
-            _escapeHatchCaller,
-            _escapeHatchDestination,
-            msg.sender,
-            _parentVault
-        );
-        vc.changeOwner(msg.sender);
-        return vc;
-    }
-}
