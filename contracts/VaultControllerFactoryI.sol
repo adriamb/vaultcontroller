@@ -1,6 +1,6 @@
 pragma solidity ^0.4.8;
 
-import "./VaultControllerFactoryI.sol";
+import "./VaultControllerI.sol";
 
 /////////////////////////////////
 // VaultControllerFactory
@@ -35,5 +35,5 @@ contract VaultControllerFactoryI {
         address _escapeHatchCaller,
         address _escapeHatchDestination,
         address _parentVault
-    );
+    ) returns(VaultControllerI);
 }

@@ -1,6 +1,7 @@
 pragma solidity ^0.4.8;
 
 import "./VaultControllerFactoryI.sol";
+import "./VaultController.sol";
 
 /////////////////////////////////
 // VaultControllerFactory
@@ -35,7 +36,7 @@ contract VaultControllerFactory is VaultControllerFactoryI {
         address _escapeHatchCaller,
         address _escapeHatchDestination,
         address _parentVault
-    ) returns(VaultController) {
+    ) returns(VaultControllerI) {
         VaultController vc = new VaultController(
             _name,
             _vaultFactory,
@@ -47,6 +48,6 @@ contract VaultControllerFactory is VaultControllerFactoryI {
             _parentVault
         );
         vc.changeOwner(msg.sender);
-        return vc;
+        return vc; 
     }
 }

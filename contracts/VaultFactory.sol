@@ -12,7 +12,7 @@ import "./VaultFactoryI.sol";
 ///  if there is no constructor function explicitly in the contract, it is
 ///  implicitly included and when deploying this contract, that is the function
 ///  that is called
-contract VaultFactory is VaultFactoryI {
+contract VaultFactory is VaultFactoryI{
     function create(address _baseToken, address _escapeHatchCaller, address _escapeHatchDestination) returns (Vault) {
         Vault v = new Vault(_baseToken, _escapeHatchCaller, _escapeHatchDestination, 0,0,0,0);
         v.changeOwner(msg.sender);

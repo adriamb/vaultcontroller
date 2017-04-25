@@ -30,5 +30,8 @@
     "babel-register": "^6.23.0",
     "babel-polyfill": "^6.23.0",
     "codecov": "^2.1.0"
+  },
+  "dependencies": {
+    "vaultcontract": "https://github.com/adriamb/vaultcontract/tarball/master"
   }
 }

@@ -7,24 +7,34 @@
 
 const VaultControllerFactory = artifacts.require("../contracts/VaultControllerFactory.sol");
 const VaultFactory = artifacts.require("../contracts/VaultFactory.sol");
+const VaultController = artifacts.require("../contracts/VaultController.sol");
 
 contract("VaultController", (accounts) => {
 
-    const owner = accounts[ 0 ];
-    const escapeHatchCaller = accounts[ 1 ];
-    const escapeHatchDestination = accounts[ 2 ];
+    const {
+        0: owner,
+        1: escapeHatchCaller,
+        2: escapeHatchDestination,
+        3: securityGuard,
+        4: spender,
+        5: recipient
+    } = accounts
 
     let vaultcrtl;
 
     beforeEach(async () => {
 
-        const vcf = await VaultControllerFactory.new();
-        vaultcrtl = await vcf.create(
+        const vcf = await VaultControllerFactory.new()
+        const vf = await VaultFactory.new()
+        vaultcrtl = await VaultController.new(
             "rootvaultcrtl",
-            await VaultFactory.new(),
-            0, // ethers
+            vf.address,
+            vcf.address,
+            0,
+            escapeHatchCaller,
             escapeHatchDestination,
-            0  // no paent vault
+            0,
+            0
         );
 
     });
@@ -34,3 +44,4 @@ contract("VaultController", (accounts) => {
     });
 
 });
+

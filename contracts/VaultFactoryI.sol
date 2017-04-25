@@ -13,6 +13,5 @@ import "../node_modules/vaultcontract/contracts/Vault.sol";
 ///  implicitly included and when deploying this contract, that is the function
 ///  that is called
 contract VaultFactoryI {
-    function create(address _baseToken, address _escapeHatchCaller, address _escapeHatchDestination)
-    returns (Vault);
+    function create(address _baseToken, address _escapeHatchCaller, address _escapeHatchDestination) returns (Vault);
 }

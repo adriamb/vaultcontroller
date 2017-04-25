@@ -1,6 +1,8 @@
 pragma solidity ^0.4.8;
 
 import "./VaultControllerI.sol";
+import "./VaultFactory.sol";
+import "./VaultControllerFactoryI.sol";
 
 /////////////////////////////////
 // VaultController
@@ -10,71 +12,6 @@ contract VaultController is VaultControllerI {
 
     uint constant  MAX_GENERATIONS = 10;
     uint constant MAX_CHILDS = 100;
-
-    /// @dev The `Recipient` is an address that is allowed to receive `baseToken`
-    ///  from this controller's Vault after `timeLockExpiration` has passed
-    struct Recipient {
-        uint activationTime; // the first moment they can start receiving funds
-        address addr;
-        string name;
-    }
-
-    /// @dev The `Spender` is allowed to initiate transactions to a 'Recipient`
-    ///  as long as the transaction does not violate any of the limits in their
-    ///  struct and they are `active`
-    struct Spender {
-        bool active;            // True if this spender is authorized to make payments
-        string name;
-        address addr;
-        uint dailyAmountLimit;  // max amount able to be sent out of the Vault by this spender (in the smallest unit of `baseToken`)
-        uint dailyTxnLimit;     // max number of txns from the Vault per day by this spender
-        uint txnAmountLimit;    // max amount to be sent from the Vault per day by this spender (in the smallest unit of `baseToken`)
-        uint openingTime;       // 0-86399 earliest moment the spender can send funds (in seconds after the start of the UTC day)
-        uint closingTime;       // 1-86400 last moment the spender can send funds (in seconds after the start of the UTC day)
-
-        uint accTxsInDay;       // var tracking the daily number in the main vault
-        uint accAmountInDay;    // var tracking the daily amount transferred in the main vault
-        uint dayOfLastTx;       // var tracking the day that the last txn happened
-
-        Recipient[] recipients;  // Array of recipients the spender can send to
-        mapping(address => uint) addr2recipientId; // An index of the Recipients' addresses
-    }
-
-    Spender[] public spenders;  // Array of spenders that can request payments from this vault
-    mapping(address => uint) addr2spenderId;  // An index of the Spenders' addresses
-
-    VaultController[] public childVaultControllers; // Array of childVaults connected to this vault
-    mapping(address => uint) addr2vaultControllerId;  // An index of the childVaults' addresses
-
-    string public name;
-    bool public canceled;
-
-
-    VaultController public parentVaultController; // Controller of the Vault that feeds this Vault (if there is one)
-    address public parentVault;                   // Address that feeds this Vault, and recieves money when this Vault overflows 
-    Vault public primaryVault;     // Vault that is funding all the childVaults
-
-    VaultFactoryI public vaultFactory;  // the contract that is used to create vaults
-    VaultControllerFactoryI public vaultControllerFactory; // the contract that is used to create vaultControllers
-
-    address public baseToken;   // The address of the token that is used as a store value
-                                //  for this contract, 0x0 in case of ether. The token must have the ERC20
-                                //  standard `balanceOf()` and `transfer()` functions
-    address public escapeHatchCaller;          // the address that can empty the vault if there is an issue
-    address public escapeHatchDestination;     // the cold wallet
-
-    uint public dailyAmountLimit;           // max amount to be sent out of this Vault per day (in the smallest unit of `baseToken`)
-    uint public dailyTxnLimit;              // max number of txns from the this Vault per day
-    uint public txnAmountLimit;             // max amount to be sent from this Vault per txn (in the smallest unit of `baseToken`)
-    uint public openingTime;                // 0-86399 earliest moment funds can be spent (in seconds after the start of the UTC day)
-    uint public closingTime;                // 1-86400 last moment funds can be spent (in seconds after the start of the UTC day)
-    uint public highestAcceptableBalance;   // max amount to be held in this Vault (in the smallest unit of `baseToken`)
-    uint public lowestAcceptableBalance;    // min amount to be held in this Vault (in the smallest unit of `baseToken`)
-    uint public whiteListTimelock;          // the number of seconds a spender has to wait to send funds to a newly added recipient
-
-    uint public accTxsInDay;       // var tracking the daily number in the main vault
-    uint public accAmountInDay;    // var tracking the daily amount transferred in the main vault
-    uint public dayOfLastTx;       // var tracking the day that the last txn happened
 
 /////////
 // Modifiers
@@ -147,7 +84,7 @@ contract VaultController is VaultControllerI {
     ) {
 
         // Initializing all the variables
-        vaultFactory = VaultFactoryI(_vaultFactory);
+        vaultFactory = VaultFactory(_vaultFactory);
         vaultControllerFactory = VaultControllerFactoryI(_vaultControllerFactory);
         baseToken = _baseToken;
         escapeHatchCaller = _escapeHatchCaller;
@@ -219,7 +156,7 @@ contract VaultController is VaultControllerI {
         // Limits the maximum childs for security reasons
         if (childVaultControllers.length >= MAX_CHILDS) throw;
 
-        VaultController vc =  vaultControllerFactory.create(
+        VaultControllerI vc =  vaultControllerFactory.create(
             _name,
             vaultFactory,
             baseToken,
@@ -252,7 +189,7 @@ contract VaultController is VaultControllerI {
         uint _closingTime
     ) onlyOwner initialized notCanceled {
         if (_childVaultId >= childVaultControllers.length) throw;
-        VaultController vc= childVaultControllers[_childVaultId];
+        VaultControllerI vc= childVaultControllers[_childVaultId];
 
 
         // Checks to confirm that the limits are not greater than the `parentVault`
@@ -285,7 +222,7 @@ contract VaultController is VaultControllerI {
         uint _vaultControllerId
         ) initialized notCanceled onlyOwnerOrParent {
         if (_vaultControllerId >= childVaultControllers.length) throw;
-        VaultController vc= childVaultControllers[_vaultControllerId];
+        VaultControllerI vc= childVaultControllers[_vaultControllerId];
 
         vc.cancelVault();
     }
@@ -346,7 +283,7 @@ contract VaultController is VaultControllerI {
         uint _lowestAcceptableBalance
     ) onlyOwner initialized notCanceled {
         if (_idChildProject > childVaultControllers.length) throw;
-        VaultController vc = childVaultControllers[_idChildProject];
+        VaultControllerI vc = childVaultControllers[_idChildProject];
 
         if (_dailyAmountLimit > dailyAmountLimit) throw;
         if (_dailyTxnLimit > dailyAmountLimit) throw;
@@ -412,7 +349,7 @@ contract VaultController is VaultControllerI {
         uint vaultControllerId = addr2vaultControllerId[msg.sender];
         if (addr2vaultControllerId[msg.sender] == 0) throw;
         vaultControllerId--;
-        VaultController vc = childVaultControllers[vaultControllerId];
+        VaultControllerI vc = childVaultControllers[vaultControllerId];
         Vault childVault = Vault(vc.primaryVault());
         if (address(childVault) == 0) throw; // Child project is not initialized
 
@@ -751,6 +688,10 @@ contract VaultController is VaultControllerI {
         assembly {
             _gas:= gas
         }
+    }
+
+    function getPrimaryVault() constant returns (Vault) {
+        return primaryVault;
     }
 
     // Events
