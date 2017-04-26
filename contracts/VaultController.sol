@@ -231,7 +231,7 @@ contract VaultController is VaultControllerI {
     /// children, emptying them to the `parentVault`
     function cancelVault() onlyOwnerOrParent initialized returns (bool _finished) {
 
-        if (canceled) return; //If it is already canceled, just return.
+        if (canceled) return true; //If it is already canceled, just return.
 
         cancelAllChildVaults();
 
@@ -331,10 +331,21 @@ contract VaultController is VaultControllerI {
         highestAcceptableBalance = _highestAcceptableBalance;
         lowestAcceptableBalance = _lowestAcceptableBalance;
 
-        parentVaultController.topUpVault();
+        if (address(parentVaultController) != 0) {
+            parentVaultController.topUpVault();
+        }
         sendBackOverflow();
 
-        VaultsLimitChanged();
+        VaultsLimitChanged(
+            _dailyAmountLimit,
+            _dailyTxnLimit,
+            _txnAmountLimit,
+            _openingTime,
+            _closingTime,
+            _whiteListTimelock,
+            _highestAcceptableBalance,
+            _lowestAcceptableBalance
+        );
     }
 
     uint public test1; // for testing
@@ -698,7 +709,16 @@ contract VaultController is VaultControllerI {
     event VaultCanceled(address indexed canceler);
     event TopUpVault(uint indexed vaultControllerId, uint amount);
 
-    event VaultsLimitChanged();
+    event VaultsLimitChanged(
+        uint dailyAmountLimit,
+        uint dailyTxnLimit,
+        uint txnAmountLimit,
+        uint openingTime,
+        uint closingTime,
+        uint whiteListTimelock,
+        uint highestAcceptableBalance,
+        uint lowestAcceptableBalance
+    );
 }
 
 
