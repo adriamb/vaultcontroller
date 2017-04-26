@@ -40,11 +40,7 @@ contract("VaultController", (accounts) => {
         );
     });
 
-
-
-
     it("Check initial contruction", async () => {
-
         assert.equal("rootvaultcrtl", await vc.name());
         assert.equal(false, await vc.canceled());
         assert.equal(0, await vc.parentVaultController());
@@ -66,11 +62,9 @@ contract("VaultController", (accounts) => {
 
         assert.equal(0, await vc.lowestAcceptableBalance());
         assert.equal(0, await vc.highestAcceptableBalance());
-
     });
 
     it("Initialization sets parameters and generates authorization log", async () => {
-
         await vc.initializeVault(
             1, // _dailyAmountLimit,
             2, // _dailyTxnLimit,
@@ -79,7 +73,7 @@ contract("VaultController", (accounts) => {
             4, // _lowestAcceptableBalance,
             6, // _whiteListTimelock,
             7, // _openingTime,
-            8  // _closingTime
+            8,  // _closingTime
         );
 
         assert.equal(false, await vc.canceled());
@@ -91,12 +85,9 @@ contract("VaultController", (accounts) => {
         assert.equal(6, await vc.whiteListTimelock());
         assert.equal(7, await vc.openingTime());
         assert.equal(8, await vc.closingTime());
-
     });
 
-
     it("Vault limits are changed and logged", async () => {
-
         await vc.initializeVault(
             1, // _dailyAmountLimit,
             2, // _dailyTxnLimit,
@@ -105,7 +96,7 @@ contract("VaultController", (accounts) => {
             4, // _lowestAcceptableBalance,
             6, // _whiteListTimelock,
             7, // _openingTime,
-            8  // _closingTime
+            8,  // _closingTime
         );
 
         const result = await vc.setVaultLimits(
@@ -116,8 +107,8 @@ contract("VaultController", (accounts) => {
             18, // _closingTime,
             16, // _whiteListTimelock,
             15, // _highestAcceptableBalance,
-            14  // _lowestAcceptableBalance
-        )
+            14,  // _lowestAcceptableBalance
+        );
 
         assert.equal(11, (await vc.dailyAmountLimit()).toNumber());
         assert.equal(12, (await vc.dailyTxnLimit()).toNumber());
@@ -127,7 +118,7 @@ contract("VaultController", (accounts) => {
         assert.equal(16, (await vc.whiteListTimelock()).toNumber());
         assert.equal(17, (await vc.openingTime()).toNumber());
         assert.equal(18, (await vc.closingTime()).toNumber());
-        
+
         const logs = filterCoverageTopics(result.logs);
         assert.equal(logs.length, 1);
         assert.equal(logs[ 0 ].event, "VaultsLimitChanged");
@@ -139,7 +130,5 @@ contract("VaultController", (accounts) => {
         assert.equal(logs[ 0 ].args.whiteListTimelock, "16");
         assert.equal(logs[ 0 ].args.highestAcceptableBalance, "15");
         assert.equal(logs[ 0 ].args.lowestAcceptableBalance, "14");
-
     });
-
 });
