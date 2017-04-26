@@ -235,7 +235,7 @@ contract VaultController is VaultControllerI {
 
         cancelAllChildVaults();
 
-        if (gas() < 200000) return false;
+        if (msg.gas < 200000) return false;
 
         uint vaultBalance = primaryVault.getBalance();
 
@@ -263,7 +263,7 @@ contract VaultController is VaultControllerI {
     /// @notice `onlyOwner` Automates that cancellation of all childVaults
     function cancelAllChildVaults() internal onlyOwnerOrParent initialized {
         uint i;
-        for (i=0; (i<childVaultControllers.length) && (gas() >=200000); i++) {
+        for (i=0; (i<childVaultControllers.length) && (msg.gas >=200000); i++) {
             cancelChildVault(i);
         }
     }
@@ -682,14 +682,7 @@ contract VaultController is VaultControllerI {
             return 1;
         }
     }
-
-    // Internal function to return the remaining gas
-    function gas() internal constant returns (uint _gas) {
-        assembly {
-            _gas:= gas
-        }
-    }
-
+ 
     function getPrimaryVault() constant returns (Vault) {
         return primaryVault;
     }
