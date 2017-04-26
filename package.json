@@ -48,7 +48,6 @@
     "test": "truffle test",
     "cover": "cd solcover && node ./runCoveredTests.js && open ./coverage/lcov-report/index.html",
     "travistest": "cd solcover && node ./runCoveredTests.js && cd .. && eslint test",
-    "solcoverinstall": "git clone http://github.com/adriamb/solcover.git && cd solcover && git checkout 4e22facad7cfe2be5545cfcbdee16094678e9601 && npm install",
     "travis": "npm run installdeps && npm run travistest && ./node_modules/.bin/codecov",
     "installdeps": "npm install && git clone http://github.com/adriamb/solcover.git && cd solcover && git checkout 4e22facad7cfe2be5545cfcbdee16094678e9601 && npm install"
   }
