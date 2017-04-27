@@ -13,7 +13,7 @@ const VaultControllerFactory = artifacts.require("../contracts/VaultControllerFa
 const VaultFactory = artifacts.require("../contracts/VaultFactory.sol");
 const VaultController = artifacts.require("../contracts/VaultController.sol");
 
-contract("VaultController:Suite1a", (accounts) => {
+contract("VaultController:Suite1b", (accounts) => {
     const {
         1: escapeHatchCaller,
         2: escapeHatchDestination,
