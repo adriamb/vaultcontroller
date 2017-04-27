@@ -480,7 +480,7 @@ contract VaultController is VaultControllerI {
         if (idSpender == 0) throw;
         idSpender--;
 
-        addr2spenderId[msg.sender] = 0;
+        addr2spenderId[_spender] = 0;
         spenders[idSpender].active = false;
 
         SpenderRemoved(idSpender, _spender);
@@ -551,14 +551,14 @@ contract VaultController is VaultControllerI {
     ///  called every time the primaryVault sends `baseTokens`
     function checkMainTransfer(address _recipient, uint _amount) internal returns (bool) {
         uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
-        uint actualTime = now % actualDay;  //Number of seconds since midnight (UTC Timezone)
+        uint actualTime = now % 86400;  //Number of seconds since midnight (UTC Timezone)
 
         if (actualTime < openingTime) actualDay--; // adjusts day to start at `mainopeningTime`
 
         uint timeSinceOpening = now - (actualDay * 86400 + openingTime);
 
         uint windowTimeLength;
-        if ( closingTime >= openingTime ) {
+        if ( closingTime > openingTime ) {
             windowTimeLength = closingTime - openingTime ;
         } else {
             windowTimeLength = 86400 + closingTime - openingTime;
@@ -590,7 +590,7 @@ contract VaultController is VaultControllerI {
     ///  called every time the primaryVault sends `baseTokens`
     function checkSpenderTransfer(Spender storage spender, address _recipient, uint _amount) internal returns (bool) {
         uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
-        uint actualTime = now % actualDay;  //Number of seconds since midnight (UTC Timezone)
+        uint actualTime = now % 86400;  //Number of seconds since midnight (UTC Timezone)
 
         if (actualTime < spender.openingTime) actualDay--; // adjusts day to start at `mainopeningTime`
 
@@ -598,7 +598,7 @@ contract VaultController is VaultControllerI {
 
         uint windowTimeLength;
 
-        if (spender.closingTime >= spender.openingTime) {
+        if (spender.closingTime > spender.openingTime) {
             windowTimeLength = spender.closingTime - spender.openingTime;    
         } else {
             windowTimeLength = 86400 + spender.closingTime - spender.openingTime;
@@ -610,12 +610,12 @@ contract VaultController is VaultControllerI {
             spender.accAmountInDay = 0;
             spender.dayOfLastTx = actualDay;
         }
-
         // Checks on the transaction limits
         if (spender.accAmountInDay + _amount < spender.accAmountInDay) throw; // Overflow
         if (spender.accAmountInDay + _amount > spender.dailyAmountLimit) return false;
         if (spender.accTxsInDay >= spender.dailyTxnLimit) return false;
         if (_amount > spender.txnAmountLimit) return false;
+ 
         if (timeSinceOpening >= windowTimeLength) return false;
 
 
@@ -641,6 +641,7 @@ contract VaultController is VaultControllerI {
         spender.accTxsInDay ++;
 
         return true;
+
     }
 
 /////
