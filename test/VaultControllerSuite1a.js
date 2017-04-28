@@ -7,17 +7,18 @@
 
 const filterCoverageTopics = require("./helpers/filterCoverageTopics.js");
 const days = require("./helpers/days.js");
+const wei = require("./helpers/wei.js");
 const assertJump = require("./helpers/assertJump.js");
 
 const VaultControllerFactory = artifacts.require("../contracts/VaultControllerFactory.sol");
 const VaultFactory = artifacts.require("../contracts/VaultFactory.sol");
 const VaultController = artifacts.require("../contracts/VaultController.sol");
 
-contract("VaultController", (accounts) => {
+contract("VaultController:Suite1a", (accounts) => {
     const {
+        0: owner,
         1: escapeHatchCaller,
         2: escapeHatchDestination,
-        4: spender,
     } = accounts;
 
     let vcf;
@@ -52,7 +53,7 @@ contract("VaultController", (accounts) => {
 
     // / -- construction --------------------------------------------------
 
-    it("Check initial contruction", async () => {
+    it("Check initial construction", async () => {
         assert.equal("rootvaultcrtl", await vc.name());
         assert.equal(false, await vc.canceled());
         assert.equal(0, await vc.parentVaultController());
@@ -97,6 +98,78 @@ contract("VaultController", (accounts) => {
         assert.fail("should have thrown before");
     });
 
+    it("Cannot initialize vault with _highestAcceptableBalance<_lowestAcceptableBalance", async () => {
+        try {
+            await vc.initializeVault(
+                10, // _dailyAmountLimit,
+                 2, // _dailyTxnLimit,
+                 8, // _txnAmountLimit,
+                 5, // _highestAcceptableBalance,
+                20, // _lowestAcceptableBalance,
+            days(1), // _whiteListTimelock,
+                 7, // _openingTime,
+                 6, // _closingTime
+            );
+        } catch (error) {
+            return assertJump(error);
+        }
+        assert.fail("should have thrown before");
+    });
+
+    it("Cannot initialize vault with _txnAmountLimit > _dailyAmountLimit", async () => {
+        try {
+            await vc.initializeVault(
+                 8, // _dailyAmountLimit,
+                 2, // _dailyTxnLimit,
+                10, // _txnAmountLimit,
+                20, // _highestAcceptableBalance,
+                 5, // _lowestAcceptableBalance,
+            days(1), // _whiteListTimelock,
+                 7, // _openingTime,
+                 6, // _closingTime
+            );
+        } catch (error) {
+            return assertJump(error);
+        }
+        assert.fail("should have thrown before");
+    });
+
+    it("Cannot initialize vault with _openingTime >= 86400", async () => {
+        try {
+            await vc.initializeVault(
+                10, // _dailyAmountLimit,
+                 2, // _dailyTxnLimit,
+                 8, // _txnAmountLimit,
+                20, // _highestAcceptableBalance,
+                 5, // _lowestAcceptableBalance,
+            days(1), // _whiteListTimelock,
+              86400, // _openingTime,
+                 6, // _closingTime
+            );
+        } catch (error) {
+            return assertJump(error);
+        }
+        assert.fail("should have thrown before");
+    });
+
+    it("Cannot initialize vault with _closingTime > 86400", async () => {
+        try {
+            await vc.initializeVault(
+                10, // _dailyAmountLimit,
+                 2, // _dailyTxnLimit,
+                 8, // _txnAmountLimit,
+                20, // _highestAcceptableBalance,
+                 5, // _lowestAcceptableBalance,
+            days(1), // _whiteListTimelock,
+                 7, // _openingTime,
+             86401, // _closingTime
+            );
+        } catch (error) {
+            return assertJump(error);
+        }
+        assert.fail("should have thrown before");
+    });
+
     it("Initialization sets parameters", async () => {
         await initializeVault();
 
@@ -117,9 +190,9 @@ contract("VaultController", (accounts) => {
         await initializeVault();
 
         const result = await vc.setVaultLimits(
-            11, // _dailyAmountLimit,
+            13, // _dailyAmountLimit,
             12, // _dailyTxnLimit,
-            13, // _txnAmountLimit,
+            11, // _txnAmountLimit,
             17, // _openingTime,
             18, // _closingTime,
             16, // _whiteListTimelock,
@@ -127,9 +200,9 @@ contract("VaultController", (accounts) => {
             14, // _lowestAcceptableBalance
         );
 
-        assert.equal(11, (await vc.dailyAmountLimit()).toNumber());
+        assert.equal(13, (await vc.dailyAmountLimit()).toNumber());
         assert.equal(12, (await vc.dailyTxnLimit()).toNumber());
-        assert.equal(13, (await vc.txnAmountLimit()).toNumber());
+        assert.equal(11, (await vc.txnAmountLimit()).toNumber());
         assert.equal(14, (await vc.lowestAcceptableBalance()).toNumber());
         assert.equal(15, (await vc.highestAcceptableBalance()).toNumber());
         assert.equal(16, (await vc.whiteListTimelock()).toNumber());
@@ -139,14 +212,14 @@ contract("VaultController", (accounts) => {
         const logs = filterCoverageTopics(result.logs);
         assert.equal(logs.length, 1);
         assert.equal(logs[ 0 ].event, "VaultsLimitChanged");
-        assert.equal(logs[ 0 ].args.dailyAmountLimit, "11");
-        assert.equal(logs[ 0 ].args.dailyTxnLimit, "12");
-        assert.equal(logs[ 0 ].args.txnAmountLimit, "13");
-        assert.equal(logs[ 0 ].args.openingTime, "17");
-        assert.equal(logs[ 0 ].args.closingTime, "18");
-        assert.equal(logs[ 0 ].args.whiteListTimelock, "16");
-        assert.equal(logs[ 0 ].args.highestAcceptableBalance, "15");
-        assert.equal(logs[ 0 ].args.lowestAcceptableBalance, "14");
+        assert.equal(logs[ 0 ].args.dailyAmountLimit.toNumber(), 13);
+        assert.equal(logs[ 0 ].args.dailyTxnLimit.toNumber(), 12);
+        assert.equal(logs[ 0 ].args.txnAmountLimit.toNumber(), 11);
+        assert.equal(logs[ 0 ].args.openingTime.toNumber(), 17);
+        assert.equal(logs[ 0 ].args.closingTime.toNumber(), 18);
+        assert.equal(logs[ 0 ].args.whiteListTimelock.toNumber(), 16);
+        assert.equal(logs[ 0 ].args.highestAcceptableBalance.toNumber(), 15);
+        assert.equal(logs[ 0 ].args.lowestAcceptableBalance.toNumber(), 14);
     });
 
     it("Non-owner cannot setVaultLimits of root vault", async () => {
@@ -154,9 +227,9 @@ contract("VaultController", (accounts) => {
 
         try {
             await vc.setVaultLimits(
-                11, // _dailyAmountLimit,
+                13, // _dailyAmountLimit,
                 12, // _dailyTxnLimit,
-                13, // _txnAmountLimit,
+                11, // _txnAmountLimit,
                 17, // _openingTime,
                 18, // _closingTime,
                 16, // _whiteListTimelock,
@@ -170,7 +243,92 @@ contract("VaultController", (accounts) => {
         assert.fail("should have thrown before");
     });
 
+    it("Cannot setVaultLimits vault with bad _highestAcceptableBalance<_lowestAcceptableBalance", async () => {
+        await initializeVault();
+
+        try {
+            await vc.setVaultLimits(
+                13, // _dailyAmountLimit,
+                12, // _dailyTxnLimit,
+                11, // _txnAmountLimit,
+                17, // _openingTime,
+                18, // _closingTime,
+                16, // _whiteListTimelock,
+                14, // _highestAcceptableBalance,
+                15, // _lowestAcceptableBalance
+            );
+        } catch (error) {
+            return assertJump(error);
+        }
+        assert.fail("should have thrown before");
+    });
+
+    it("Cannot setVaultLimits vault with _txnAmountLimit > _dailyAmountLimit", async () => {
+        await initializeVault();
+
+        try {
+            await vc.setVaultLimits(
+                11, // _dailyAmountLimit,
+                12, // _dailyTxnLimit,
+                13, // _txnAmountLimit,
+                17, // _openingTime,
+                18, // _closingTime,
+                16, // _whiteListTimelock,
+                15, // _highestAcceptableBalance,
+                14, // _lowestAcceptableBalance
+            );
+        } catch (error) {
+            return assertJump(error);
+        }
+        assert.fail("should have thrown before");
+    });
+
+    it("Cannot setVaultLimits vault with _openingTime >= 86400", async () => {
+        await initializeVault();
+
+        try {
+            await vc.setVaultLimits(
+                13, // _dailyAmountLimit,
+                12, // _dailyTxnLimit,
+                11, // _txnAmountLimit,
+                86400, // _openingTime,
+                18, // _closingTime,
+                16, // _whiteListTimelock,
+                15, // _highestAcceptableBalance,
+                14, // _lowestAcceptableBalance
+            );
+        } catch (error) {
+            return assertJump(error);
+        }
+        assert.fail("should have thrown before");
+    });
+
+    it("Cannot setVaultLimits vault with _closingTime > 86400", async () => {
+        await initializeVault();
+
+        try {
+            await vc.setVaultLimits(
+                13, // _dailyAmountLimit,
+                12, // _dailyTxnLimit,
+                11, // _txnAmountLimit,
+                17, // _openingTime,
+                86401, // _closingTime,
+                16, // _whiteListTimelock,
+                15, // _highestAcceptableBalance,
+                14, // _lowestAcceptableBalance
+            );
+        } catch (error) {
+            return assertJump(error);
+        }
+        assert.fail("should have thrown before");
+    });
+
     // / -- cancelVault --------------------------------------------------
+
+    it("Uninitizized vault can be cancelled", async () => {
+        await vc.cancelVault();
+        assert.equal(true, await vc.canceled());
+    });
 
     it("Initialized vault can be cancelled", async () => {
         await initializeVault();
@@ -200,109 +358,15 @@ contract("VaultController", (accounts) => {
     });
 
     xit("A cancelled with founds are returned to xxxxxxxx and log is generated", async () => {
-    });
-
-    // / -- spenders --------------------------------------------------
-
-    it("Cannot authorize an spender with more dailyAmountLimit than vault", async () => {
-        await initializeVault();
-        try {
-            await vc.authorizeSpender("SPENDER", spender, 11, 2, 8, 7, 6);
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Cannot authorize an spender with more dailyTxnLimit than vault", async () => {
-        await initializeVault();
-        try {
-            await vc.authorizeSpender("SPENDER", spender, 10, 3, 8, 7, 6);
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Cannot authorize an spender with more txnAmountLimit than vault", async () => {
-        await initializeVault();
-        try {
-            await vc.authorizeSpender("SPENDER", spender, 10, 2, 9, 7, 6);
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("When an spender is authorized, numberOfSpenders is incremented", async () => {
         await initializeVault();
 
-        const startingNumberOfSpenders = (await vc.numberOfSpenders()).toNumber();
+        const vaultAddr = await vc.primaryVault();
+        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
 
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
-
-        const endingNumberOfSpenders = (await vc.numberOfSpenders()).toNumber();
-
-        assert.equal(1, endingNumberOfSpenders - startingNumberOfSpenders);
-    });
-
-    it("When an spender is authorized, event is logged", async () => {
-        await initializeVault();
-
-        const result = await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
-
+        const result = await vc.cancelVault();
         const logs = filterCoverageTopics(result.logs);
         assert.equal(logs.length, 1);
-        assert.equal(logs[ 0 ].event, "SpenderAuthorized");
-        assert.equal(logs[ 0 ].args.idSpender, "0");
-        assert.equal(logs[ 0 ].args.spender, spender);
-    });
-
-    xit("If an existing spender is added, data is updated", async () => {
-        await initializeVault();
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
-
-        const startingNumberOfSpenders = (await vc.numberOfSpenders()).toNumber();
-        await vc.authorizeSpender("SPENDER", spender, 9, 1, 7, 6, 7);
-        const endingNumberOfSpenders = (await vc.numberOfSpenders()).toNumber();
-
-        assert.equal(0, endingNumberOfSpenders - startingNumberOfSpenders);
-    });
-
-    xit("An existing spender can be removed", async () => {
-        await initializeVault();
-
-        const startingNumberOfSpenders = (await vc.numberOfSpenders()).toNumber();
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
-        await vc.removeAuthorizedSpender(spender);
-        const endingNumberOfSpenders = (await vc.numberOfSpenders()).toNumber();
-
-        assert.equal(0, endingNumberOfSpenders - startingNumberOfSpenders);
-    });
-
-    it("Log is generated on removing an spender", async () => {
-        await initializeVault();
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
-        const result = await vc.removeAuthorizedSpender(spender);
-
-        const logs = filterCoverageTopics(result.logs);
-        assert.equal(logs.length, 1);
-        assert.equal(logs[ 0 ].event, "SpenderRemoved");
-        assert.equal(logs[ 0 ].args.spender, spender);
-    });
-
-    xit("An existing spender cannot be removed twice", async () => {
-        await initializeVault();
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
-        await vc.removeAuthorizedSpender(spender);
-        try {
-            await vc.removeAuthorizedSpender(spender);
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
+        assert.equal(logs[ 0 ].event, "VaultCanceled");
+        assert.equal(logs[ 0 ].args.canceler, owner);
     });
 });

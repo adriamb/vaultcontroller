@@ -12,6 +12,7 @@ contract VaultController is VaultControllerI {
 
     uint constant  MAX_GENERATIONS = 10;
     uint constant MAX_CHILDS = 100;
+    uint constant GAS_LIMIT = 500000;
 
 /////////
 // Modifiers
@@ -84,12 +85,12 @@ contract VaultController is VaultControllerI {
     ) {
 
         // Initializing all the variables
-        vaultFactory = VaultFactory(_vaultFactory);
+        vaultFactory = VaultFactoryI(_vaultFactory);
         vaultControllerFactory = VaultControllerFactoryI(_vaultControllerFactory);
         baseToken = _baseToken;
         escapeHatchCaller = _escapeHatchCaller;
         escapeHatchDestination = _escapeHatchDestination;
-        parentVaultController = VaultController(_parentVaultController);
+        parentVaultController = VaultControllerI(_parentVaultController);
         parentVault = _parentVault;
 
 
@@ -115,6 +116,11 @@ contract VaultController is VaultControllerI {
         uint _openingTime,
         uint _closingTime
       ) onlyOwner notInitialized notCanceled {
+
+        if (_highestAcceptableBalance < _lowestAcceptableBalance) throw;
+        if (_txnAmountLimit > _dailyAmountLimit) throw;
+        if (_openingTime >= 86400) throw;
+        if (_closingTime > 86400) throw;
 
         dailyAmountLimit = _dailyAmountLimit;
         dailyTxnLimit = _dailyTxnLimit;
@@ -229,13 +235,18 @@ contract VaultController is VaultControllerI {
 
     /// @notice `onlyOwnerOrParent` Cancels this controller's Vault and all it's
     /// children, emptying them to the `parentVault`
-    function cancelVault() onlyOwnerOrParent initialized returns (bool _finished) {
+    function cancelVault() onlyOwnerOrParent returns (bool _finished) {
+
+        // If ! initialized, just mark it as cancelled and return
+        if (address(primaryVault) == 0) {
+            canceled = true;
+        }
 
         if (canceled) return true; //If it is already canceled, just return.
 
         cancelAllChildVaults();
 
-        if (msg.gas < 200000) return false;
+        if (msg.gas < GAS_LIMIT) return false;
 
         uint vaultBalance = primaryVault.getBalance();
 
@@ -263,7 +274,7 @@ contract VaultController is VaultControllerI {
     /// @notice `onlyOwner` Automates that cancellation of all childVaults
     function cancelAllChildVaults() internal onlyOwnerOrParent initialized {
         uint i;
-        for (i=0; (i<childVaultControllers.length) && (msg.gas >=200000); i++) {
+        for (i=0; (i<childVaultControllers.length) && (msg.gas >= GAS_LIMIT); i++) {
             cancelChildVault(i);
         }
     }
@@ -321,6 +332,9 @@ contract VaultController is VaultControllerI {
         uint _lowestAcceptableBalance
     ) onlyParentOrOwnerIfNoParent initialized notCanceled {
         if (_lowestAcceptableBalance > _highestAcceptableBalance) throw;
+        if (_txnAmountLimit > _dailyAmountLimit) throw;
+        if (_openingTime >= 86400) throw;
+        if (_closingTime > 86400) throw;
 
         dailyAmountLimit = _dailyAmountLimit;
         dailyTxnLimit = _dailyTxnLimit;
@@ -333,8 +347,8 @@ contract VaultController is VaultControllerI {
 
         if (address(parentVaultController) != 0) {
             parentVaultController.topUpVault();
+            sendBackOverflow();
         }
-        sendBackOverflow();
 
         VaultsLimitChanged(
             _dailyAmountLimit,
@@ -386,9 +400,13 @@ contract VaultController is VaultControllerI {
 
 
     /// @notice A `childVaultController` calls this function to reduce their
-    ///  Vault's Balance to the `highestAcceptableBalance`
+    ///  Vault's Balance to the `highestAcceptableBalance`.
+    ///  If anybody tops the vault with Ether that spills over, this function
+    ///  can be called to transfer the spilled over part to the main vault.
     function sendBackOverflow() {
-        if (primaryVault.getBalance() > highestAcceptableBalance) {
+        if (  (primaryVault.getBalance() > highestAcceptableBalance)
+            &&(parentVault != 0))
+        {
             primaryVault.authorizePayment(
               "VAULT OVERFLOW",
               bytes32(0),
@@ -451,7 +469,14 @@ contract VaultController is VaultControllerI {
         uint _openingTime,
         uint _closingTime
     ) onlyOwner initialized notCanceled {
-        uint idSpender = spenders.length ++;
+
+        uint idSpender = addr2spenderId[_addr];
+
+        if (idSpender == 0) {
+            idSpender = spenders.length ++;
+        } else {
+            idSpender--;
+        }
         Spender s = spenders[idSpender];
 
         if (_dailyAmountLimit > dailyAmountLimit) throw;
@@ -506,11 +531,22 @@ contract VaultController is VaultControllerI {
 
         if (s.addr2recipientId[_recipient]>0) return; // already authorized
 
-        uint idRecipient = s.recipients.length ++;
 
-        s.recipients[idRecipient].name = _name;
-        s.recipients[idRecipient].addr = _recipient;
-        s.recipients[idRecipient].activationTime = now + whiteListTimelock;
+        uint idRecipient = s.addr2recipientId[_recipient];
+
+        if (idRecipient == 0) {
+            idRecipient = s.recipients.length ++;
+        } else {
+           idRecipient --;
+        }
+
+        Recipient r = s.recipients[idRecipient];
+
+        r.name = _name;
+        r.addr = _recipient;
+        if (r.activationTime == 0) {
+            r.activationTime = now + whiteListTimelock;
+        }
 
         s.addr2recipientId[_recipient] = idRecipient +1;
 
@@ -558,8 +594,8 @@ contract VaultController is VaultControllerI {
         uint timeSinceOpening = now - (actualDay * 86400 + openingTime);
 
         uint windowTimeLength;
-        if ( closingTime > openingTime ) {
-            windowTimeLength = closingTime - openingTime ;
+        if (closingTime >= openingTime) {
+            windowTimeLength = closingTime - openingTime;
         } else {
             windowTimeLength = 86400 + closingTime - openingTime;
         }
@@ -598,8 +634,8 @@ contract VaultController is VaultControllerI {
 
         uint windowTimeLength;
 
-        if (spender.closingTime > spender.openingTime) {
-            windowTimeLength = spender.closingTime - spender.openingTime;    
+        if (spender.closingTime >= spender.openingTime) {
+            windowTimeLength = spender.closingTime - spender.openingTime;
         } else {
             windowTimeLength = 86400 + spender.closingTime - spender.openingTime;
         }
@@ -610,12 +646,12 @@ contract VaultController is VaultControllerI {
             spender.accAmountInDay = 0;
             spender.dayOfLastTx = actualDay;
         }
+
         // Checks on the transaction limits
         if (spender.accAmountInDay + _amount < spender.accAmountInDay) throw; // Overflow
         if (spender.accAmountInDay + _amount > spender.dailyAmountLimit) return false;
         if (spender.accTxsInDay >= spender.dailyTxnLimit) return false;
         if (_amount > spender.txnAmountLimit) return false;
- 
         if (timeSinceOpening >= windowTimeLength) return false;
 
 
@@ -641,7 +677,6 @@ contract VaultController is VaultControllerI {
         spender.accTxsInDay ++;
 
         return true;
-
     }
 
 /////
@@ -694,10 +729,7 @@ contract VaultController is VaultControllerI {
             return 1;
         }
     }
- 
-    function getPrimaryVault() constant returns (Vault) {
-        return primaryVault;
-    }
+
 
     // Events
     event SpenderAuthorized(uint indexed idSpender, address indexed spender);
