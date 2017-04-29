@@ -1,5 +1,3 @@
-// This test suite corresponds to the old Vault test suite
-
 /* global artifacts */
 /* global contract */
 /* global web3 */
@@ -13,7 +11,7 @@ const VaultControllerFactory = artifacts.require("../contracts/VaultControllerFa
 const VaultFactory = artifacts.require("../contracts/VaultFactory.sol");
 const VaultController = artifacts.require("../contracts/VaultController.sol");
 
-contract("VaultController:Suite1b", (accounts) => {
+contract("VaultController:Suite1b:spenders", (accounts) => {
     const {
         1: escapeHatchCaller,
         2: escapeHatchDestination,
