@@ -1,5 +1,3 @@
-// This test suite corresponds to the old Vault test suite
-
 /* global artifacts */
 /* global contract */
 /* global web3 */
@@ -15,7 +13,7 @@ const VaultControllerFactory = artifacts.require("../contracts/VaultControllerFa
 const VaultFactory = artifacts.require("../contracts/VaultFactory.sol");
 const VaultController = artifacts.require("../contracts/VaultController.sol");
 
-contract("VaultController:Suite1d", (accounts) => {
+contract("VaultController:Suite1d:transfer,limits", (accounts) => {
     const {
         0: owner,
         1: escapeHatchCaller,
@@ -158,7 +156,7 @@ contract("VaultController:Suite1d", (accounts) => {
         assert.fail("should have thrown before");
     });
 
-    // / -- spender limits & time windows
+    // / -- spender limits & time windows --------------------------------------------------
 
     it("Check transfer cannot be done if spender dailyAmountLimit is reached", async () => {
         await initializeVault();
@@ -354,7 +352,7 @@ contract("VaultController:Suite1d", (accounts) => {
         assert.fail("should have thrown before");
     });
 
-    // / -- vaultcontroller limits & time windows
+    // / -- vaultcontroller limits & time windows -----------------------------------
 
     it("Check transfer cannot be done if vaultcontroller dailyAmountLimit is reached", async () => {
         await initializeVault();
