@@ -1,21 +1,17 @@
-// This test suite corresponds to the old Vault test suite
-
 /* global artifacts */
 /* global contract */
 /* global web3 */
 /* global assert */
 
-const wei = require("./helpers/wei.js");
+const filterCoverageTopics = require("./helpers/filterCoverageTopics.js");
 const days = require("./helpers/days.js");
-const hours = require("./helpers/hours.js");
 const assertJump = require("./helpers/assertJump.js");
-const timeTravel = require("./helpers/timeTravel.js");
 
 const VaultControllerFactory = artifacts.require("../contracts/VaultControllerFactory.sol");
 const VaultFactory = artifacts.require("../contracts/VaultFactory.sol");
 const VaultController = artifacts.require("../contracts/VaultController.sol");
 
-contract("VaultController:Suite1c", (accounts) => {
+contract("VaultController:Suite1c:recipients", (accounts) => {
     const {
         0: owner,
         1: escapeHatchCaller,
@@ -43,10 +39,10 @@ contract("VaultController:Suite1c", (accounts) => {
         );
     });
 
-    const initializeVault = async () => vc.initializeVault(
-            11, // _dailyAmountLimit,
-             3, // _dailyTxnLimit,
-             9, // _txnAmountLimit,
+    const initializeVault = () => vc.initializeVault(
+            10, // _dailyAmountLimit,
+             2, // _dailyTxnLimit,
+             8, // _txnAmountLimit,
             20, // _highestAcceptableBalance,
              5, // _lowestAcceptableBalance,
         days(1), // _whiteListTimelock,
@@ -54,494 +50,185 @@ contract("VaultController:Suite1c", (accounts) => {
              6, // _closingTime
         );
 
-    // / -- transfer --------------------------------------------------
+    // / -- recipients --------------------------------------------------
 
-    it("A non spender cannot spend founds", async () => {
+    it("Cannot authorize a recipient from non-existent spender", async () => {
         await initializeVault();
 
         try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1));
+            await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
         } catch (error) {
             return assertJump(error);
         }
         assert.fail("should have thrown before");
     });
 
-    it("Transfer is done if all conditions are met", async () => {
+    it("Cannot authorize a recipient from a removed spender", async () => {
         await initializeVault();
 
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        const beginRecipientBalance = web3.eth.getBalance(recipient);
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(8), { from: spender });
-        const endRecipientBalance = web3.eth.getBalance(recipient);
-
-        assert.equal(8, endRecipientBalance.minus(beginRecipientBalance).toNumber());
-    });
-
-    xit("A cancelled vault cannot transfer founds", async () => {
-    });
-
-    it("Cannot transfer if whiteListTimelock is not reached", async () => {
-        await initializeVault();
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(8), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Cannot transfer if whiteListTimelock if spender is unauthorized", async () => {
-        await initializeVault();
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
+        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
         await vc.removeAuthorizedSpender(spender);
-
         try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(8), { from: spender });
+            await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
         } catch (error) {
             return assertJump(error);
         }
         assert.fail("should have thrown before");
     });
 
-    it("Cannot transfer if whiteListTimelock if recipient is unauthorized", async () => {
+    it("Authorizing a recipient generates a log", async () => {
         await initializeVault();
 
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
+        let result = await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
+        let logs = filterCoverageTopics(result.logs);
+        const idSpender = logs[ 0 ].args.idSpender.toNumber();
 
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
+        result = await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
+        logs = filterCoverageTopics(result.logs);
+
+        assert.equal(logs.length, 1);
+        assert.equal(logs[ 0 ].event, "RecipientAuthorized");
+        assert.equal(logs[ 0 ].args.idSpender, idSpender);
+        assert.equal(logs[ 0 ].args.idRecipient, "0");
+        assert.equal(logs[ 0 ].args.recipient, recipient);
+    });
+
+    it("Authorizing a non-existent recipient increments numberOfRecipients()", async () => {
+        await initializeVault();
+
+        const result = await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
+        const logs = filterCoverageTopics(result.logs);
+        const idSpender = logs[ 0 ].args.idSpender.toNumber();
+
+        const startRecipientsCount = (await vc.numberOfRecipients(idSpender)).toNumber();
         await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
+        const endRecipientsCount = (await vc.numberOfRecipients(idSpender)).toNumber();
+        assert.equal(1, endRecipientsCount - startRecipientsCount);
+    });
+
+    it("Authorizing a existent recipient does not increment numberOfRecipients()", async () => {
+        await initializeVault();
+
+        const result = await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
+        const logs = filterCoverageTopics(result.logs);
+        const idSpender = logs[ 0 ].args.idSpender.toNumber();
+
+        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
+        const startRecipientsCount = (await vc.numberOfRecipients(idSpender)).toNumber();
+        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
+        const endRecipientsCount = (await vc.numberOfRecipients(idSpender)).toNumber();
+        assert.equal(0, endRecipientsCount - startRecipientsCount);
+    });
+
+    it("Authorizing a existent recipient with a different name does not fails", async () => {
+        await initializeVault();
+
+        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
+
+        await vc.authorizeRecipient(spender, recipient, "RECIPIENT1");
+        await vc.authorizeRecipient(spender, recipient, "RECIPIENT2");
+    });
+
+    it("Two different recipients could be added", async () => {
+        await initializeVault();
+
+        const result = await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
+        const logs = filterCoverageTopics(result.logs);
+        const idSpender = logs[ 0 ].args.idSpender.toNumber();
+
+        const startRecipientsCount = (await vc.numberOfRecipients(idSpender)).toNumber();
+        await vc.authorizeRecipient(spender, recipient, "RECIPIENT1");
+        await vc.authorizeRecipient(spender, owner, "RECIPIENT2");
+        const endRecipientsCount = (await vc.numberOfRecipients(idSpender)).toNumber();
+        assert.equal(2, endRecipientsCount - startRecipientsCount);
+    });
+
+    it("Removing from a non-existing spender fails", async () => {
+        await initializeVault();
+
+        try {
+            await vc.removeAuthorizedRecipient(spender, recipient);
+        } catch (error) {
+            return assertJump(error);
+        }
+        assert.fail("should have thrown before");
+    });
+
+    it("Removing from a non-existing recipient does not fails", async () => {
+        await initializeVault();
+
+        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
+        await vc.removeAuthorizedRecipient(spender, recipient);
+    });
+
+    it("Recipients can be accessed trough recipients() function", async () => {
+        await initializeVault();
+
+        let result = await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
+        let logs = filterCoverageTopics(result.logs);
+        const idSpender = logs[ 0 ].args.idSpender.toNumber();
+
+        result = await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
+        logs = filterCoverageTopics(result.logs);
+        const idRecipient = logs[ 0 ].args.idRecipient.toNumber();
+
+        const [ _activationTime, _name, _addr ] = await vc.recipients(idSpender, idRecipient);
+
+        assert.notEqual(0, _activationTime);
+        assert.equal("RECIPIENT", _name);
+        assert.equal(recipient, _addr);
+    });
+
+    it("An existing recipient can be removed", async () => {
+        await initializeVault();
+
+        let result = await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
+        let logs = filterCoverageTopics(result.logs);
+        const idSpender = logs[ 0 ].args.idSpender.toNumber();
+
+        result = await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
+        logs = filterCoverageTopics(result.logs);
+        const idRecipient = logs[ 0 ].args.idRecipient.toNumber();
+
         await vc.removeAuthorizedRecipient(spender, recipient);
 
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(8), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
+        const [ _activationTime,, ] = await vc.recipients(idSpender, idRecipient);
+
+        assert.equal(0, _activationTime);
     });
 
-    // / -- spender limits & time windows
-
-    it("Check transfer cannot be done if spender dailyAmountLimit is reached", async () => {
+    it("An existing recipient cannot be removed from a removed spender", async () => {
         await initializeVault();
 
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 0, 86400);
+        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
         await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(8), { from: spender });
+        await vc.removeAuthorizedSpender(spender);
         try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF2", recipient, wei(3), { from: spender });
+            await vc.removeAuthorizedRecipient(spender, recipient);
         } catch (error) {
             return assertJump(error);
         }
         assert.fail("should have thrown before");
     });
 
-    it("Check transfer can be done when spender dailyAmountLimit is reset", async () => {
-        await initializeVault();
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 0, 86400);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(8), { from: spender });
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF2", recipient, wei(3), { from: spender });
-    });
-
-    it("Check transfer cannot be done if spender dailyTxnLimit is reached", async () => {
+    it("Log is generated on removing a recipient", async () => {
         await initializeVault();
 
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 0, 86400);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF2", recipient, wei(1), { from: spender });
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF3", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check transfer can be done when spender dailyTxnLimit is reset", async () => {
-        await initializeVault();
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 0, 86400);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF2", recipient, wei(1), { from: spender });
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF3", recipient, wei(1), { from: spender });
-    });
-
-    it("Check transfer cannot be done if spender txnAmountLimit is reached", async () => {
-        await initializeVault();
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 0, 86400);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(9), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check transfer with narrow spender time window {openingTime<closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, hours(11), hours(13));
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(12)); // next next day, 12pm
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-    });
-
-    it("Check cannot transfer after narrow spender time window  {openingTime<closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, hours(11), hours(13));
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(14)); // next next day, 12pm
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check cannot transfer before spender narrow time window {openingTime<closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, hours(11), hours(13));
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(10)); // next next day, 10am
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check transfer with spender narrow time window {openingTime>closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, hours(22), hours(2));
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(23)); // next next day, 23pm
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-    });
-
-    it("Check cannot transfer after spender narrow time window {openingTime>closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, hours(22), hours(2));
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(3)); // next next day, 3am
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check cannot transfer before spender narrow time window {openingTime>closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, hours(22), hours(2));
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(21)); // next next day, 2am
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    // / -- vaultcontroller limits & time windows
-
-    it("Check transfer cannot be done if vaultcontroller dailyAmountLimit is reached", async () => {
-        await initializeVault();
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, 0, 86400, days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(8), { from: spender });
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF2", recipient, wei(3), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check transfer can be done when vaultcontroller dailyAmountLimit is reset", async () => {
-        await initializeVault();
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, 0, 86400, days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(8), { from: spender });
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF2", recipient, wei(3), { from: spender });
-    });
-
-    it("Check transfer cannot be done if vaultcontroller dailyTxnLimit is reached", async () => {
-        await initializeVault();
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, 0, 86400, days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF2", recipient, wei(1), { from: spender });
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF3", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check transfer can be done when vaultcontroller dailyTxnLimit is reset", async () => {
-        await initializeVault();
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, 0, 86400, days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF2", recipient, wei(1), { from: spender });
-
-        await timeTravel(days(1));
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF3", recipient, wei(1), { from: spender });
-    });
-
-    it("Check transfer cannot be done if vaultcontroller txnAmountLimit is reached", async () => {
-        await initializeVault();
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, 0, 86400, days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel(days(1));
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(9), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check transfer with narrow vaultcontroller time window {openingTime<closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, hours(11), hours(13), days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(12)); // next next day, 12pm
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-    });
-
-    it("Check cannot transfer after narrow vaultcontroller time window  {openingTime<closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, hours(11), hours(13), days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(14)); // next next day, 12pm
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check cannot transfer before vaultcontroller narrow time window {openingTime<closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, hours(11), hours(13), days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(10)); // next next day, 10am
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check transfer with vaultcontroller narrow time window {openingTime>closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, hours(22), hours(2), days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(23)); // next next day, 23pm
-
-        await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-    });
-
-    it("Check cannot transfer after vaultcontroller narrow time window {openingTime>closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, hours(22), hours(2), days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(3)); // next next day, 3am
-
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
-    });
-
-    it("Check cannot transfer before vaultcontroller narrow time window {openingTime>closingTime}", async () => {
-        const result = await initializeVault();
-        const actualTime = web3.eth.getBlock(result.receipt.blockNumber).timestamp % 86400;
-
-        const vaultAddr = await vc.primaryVault();
-        web3.eth.sendTransaction({ from: owner, to: vaultAddr, value: wei(1000) });
-
-        await vc.authorizeSpender("SPENDER", spender, 11, 3, 9, 0, 86400);
-        await vc.setVaultLimits(10, 2, 8, hours(22), hours(2), days(1), 20, 5);
-        await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
-
-        await timeTravel((hours(48) - actualTime) + hours(21)); // next next day, 2am
-
-        try {
-            await vc.sendToAuthorizedRecipient("TRNF1", "REF1", recipient, wei(1), { from: spender });
-        } catch (error) {
-            return assertJump(error);
-        }
-        assert.fail("should have thrown before");
+        let result = await vc.authorizeSpender("SPENDER", spender, 10, 2, 8, 7, 6);
+        let logs = filterCoverageTopics(result.logs);
+        const idSpender = logs[ 0 ].args.idSpender.toNumber();
+
+        result = await vc.authorizeRecipient(spender, recipient, "RECIPIENT");
+        logs = filterCoverageTopics(result.logs);
+        const idRecipient = logs[ 0 ].args.idRecipient.toNumber();
+
+        result = await vc.removeAuthorizedRecipient(spender, recipient);
+
+        logs = filterCoverageTopics(result.logs);
+        assert.equal(logs.length, 1);
+        assert.equal(logs[ 0 ].event, "RecipientRemoved");
+        assert.equal(logs[ 0 ].args.idSpender.toNumber(), idSpender);
+        assert.equal(logs[ 0 ].args.idRecipient.toNumber(), idRecipient);
+        assert.equal(logs[ 0 ].args.recipient, recipient);
     });
 });

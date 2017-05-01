@@ -228,5 +228,3 @@ contract VaultControllerI is Owned {
     function getGeneration() constant returns (uint);
 
 }
-
-
