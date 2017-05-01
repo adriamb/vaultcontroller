@@ -534,10 +534,14 @@ contract VaultController is VaultControllerI, SafeMath {
         Spender s = spenders[idSpender];
 
         if (s.addr2recipientId[_recipient]>0) return; // already authorized
+        uint idRecipient = s.addr2recipientId[_recipient];
 
-        uint idRecipient = add(s.recipients.length, 1);
-        s.recipients.length = add(s.recipients.length, 1);
-
+        if (idRecipient == 0) {
+            idRecipient = s.recipients.length;
+            s.recipients.length = add(s.recipients.length, 1);
+        } else {
+           idRecipient = subtract(idRecipient, 1);
+        }
 
         s.recipients[idRecipient].name = _name;
         s.recipients[idRecipient].addr = _recipient;
