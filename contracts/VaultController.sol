@@ -3,12 +3,13 @@ pragma solidity ^0.4.8;
 import "./VaultControllerI.sol";
 import "./VaultFactory.sol";
 import "./VaultControllerFactoryI.sol";
+import "./SafeMath.sol";
 
 /////////////////////////////////
 // VaultController
 /////////////////////////////////
 
-contract VaultController is VaultControllerI {
+contract VaultController is VaultControllerI, SafeMath {
 
     uint constant  MAX_GENERATIONS = 10;
     uint constant MAX_CHILDS = 100;
@@ -170,8 +171,8 @@ contract VaultController is VaultControllerI {
             escapeHatchDestination,
             address(primaryVault)
         );
-
-        uint childControllerId = childVaultControllers.length ++;
+        uint childControllerId = childVaultControllers.length;
+        childVaultControllers.length = add(childVaultControllers.length, 1);
         childVaultControllers[childControllerId] = vc;
         addr2vaultControllerId[address(vc)] = childVaultControllers.length;
 
@@ -373,14 +374,14 @@ contract VaultController is VaultControllerI {
     function topUpVault() initialized notCanceled {
         uint vaultControllerId = addr2vaultControllerId[msg.sender];
         if (addr2vaultControllerId[msg.sender] == 0) throw;
-        vaultControllerId--;
+        vaultControllerId = subtract(vaultControllerId, 1);
         VaultControllerI vc = childVaultControllers[vaultControllerId];
         Vault childVault = Vault(vc.primaryVault());
         if (address(childVault) == 0) throw; // Child project is not initialized
 
         uint vaultBalance = childVault.getBalance();
         if (vaultBalance < vc.lowestAcceptableBalance()) {
-            uint transferAmount = vc.highestAcceptableBalance() - vaultBalance;
+            uint transferAmount = subtract(vc.highestAcceptableBalance(), vaultBalance);
             if (primaryVault.getBalance() < transferAmount) {
                 transferAmount = primaryVault.getBalance();
             }
@@ -411,7 +412,7 @@ contract VaultController is VaultControllerI {
               "VAULT OVERFLOW",
               bytes32(0),
               address(parentVault),
-              primaryVault.getBalance() - highestAcceptableBalance,
+              subtract(primaryVault.getBalance(), highestAcceptableBalance),
               0
             );
         }
@@ -431,7 +432,7 @@ contract VaultController is VaultControllerI {
         if (idSpender == 0) throw;
         // addr2spenderId stores the position in the array relative to 1
         // so we subtract one to make it relative to 0.
-        idSpender --;
+        idSpender = subtract(idSpender, 1);
         Spender s = spenders[idSpender];
 
         if (!checkMainTransfer(_recipient, _amount)) throw;
@@ -473,10 +474,12 @@ contract VaultController is VaultControllerI {
         uint idSpender = addr2spenderId[_addr];
 
         if (idSpender == 0) {
-            idSpender = spenders.length ++;
+            idSpender = spenders.length;
+            spenders.length = add(spenders.length, 1);
         } else {
-            idSpender--;
+            idSpender = subtract(idSpender, 1);
         }
+        
         Spender s = spenders[idSpender];
 
         if (_dailyAmountLimit > dailyAmountLimit) throw;
@@ -494,7 +497,7 @@ contract VaultController is VaultControllerI {
         s.openingTime = _openingTime;
         s.closingTime = _closingTime;
 
-        addr2spenderId[_addr] = idSpender+1;
+        addr2spenderId[_addr] = add(idSpender, 1);
 
         SpenderAuthorized(idSpender, _addr);
     }
@@ -503,7 +506,7 @@ contract VaultController is VaultControllerI {
     function removeAuthorizedSpender(address _spender) onlyOwner initialized notCanceled {
         uint idSpender = addr2spenderId[_spender];
         if (idSpender == 0) throw;
-        idSpender--;
+        idSpender = subtract(idSpender, 1);
 
         addr2spenderId[_spender] = 0;
         spenders[idSpender].active = false;
@@ -526,30 +529,33 @@ contract VaultController is VaultControllerI {
     ) onlyOwner initialized notCanceled {
         uint idSpender = addr2spenderId[_spender];
         if (idSpender == 0) throw;
-        idSpender --;
+
+        idSpender = subtract(idSpender, 1);
         Spender s = spenders[idSpender];
 
         if (s.addr2recipientId[_recipient]>0) return; // already authorized
-
-
         uint idRecipient = s.addr2recipientId[_recipient];
 
         if (idRecipient == 0) {
-            idRecipient = s.recipients.length ++;
+            idRecipient = s.recipients.length;
+            s.recipients.length = add(s.recipients.length, 1);
         } else {
-           idRecipient --;
+           idRecipient = subtract(idRecipient, 1);
         }
+
+        s.recipients[idRecipient].name = _name;
+        s.recipients[idRecipient].addr = _recipient;
+        s.recipients[idRecipient].activationTime = add(now, whiteListTimelock);
 
         Recipient r = s.recipients[idRecipient];
 
         r.name = _name;
         r.addr = _recipient;
         if (r.activationTime == 0) {
-            r.activationTime = now + whiteListTimelock;
+            r.activationTime = add(now, whiteListTimelock);
         }
 
-        s.addr2recipientId[_recipient] = idRecipient +1;
-
+        s.addr2recipientId[_recipient] = add(idRecipient, 1);
         RecipientAuthorized(idSpender, idRecipient, _recipient);
     }
 
@@ -565,12 +571,13 @@ contract VaultController is VaultControllerI {
     ) onlyOwner initialized notCanceled {
         uint idSpender = addr2spenderId[_spender];
         if (idSpender == 0) throw;
-        idSpender --;
+
+        idSpender = subtract(idSpender, 1);
         Spender s = spenders[idSpender];
 
         uint idRecipient = s.addr2recipientId[_recipient];
         if (idRecipient == 0) return; // already unauthorized
-        idRecipient--;
+        idRecipient = subtract(idRecipient, 1);
 
         s.recipients[idRecipient].activationTime = 0;
         s.addr2recipientId[_recipient] = 0;
@@ -586,18 +593,20 @@ contract VaultController is VaultControllerI {
     /// @notice Checks that the transaction limits in the primaryVault are followed
     ///  called every time the primaryVault sends `baseTokens`
     function checkMainTransfer(address _recipient, uint _amount) internal returns (bool) {
-        uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
+        uint actualDay = divide(now, 86400);       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
         uint actualTime = now % 86400;  //Number of seconds since midnight (UTC Timezone)
 
-        if (actualTime < openingTime) actualDay--; // adjusts day to start at `mainopeningTime`
+        if (actualTime < openingTime) {
+            actualDay = subtract(actualDay, 1); // adjusts day to start at `mainopeningTime`
+        }
 
-        uint timeSinceOpening = now - (actualDay * 86400 + openingTime);
+        uint timeSinceOpening = subtract(now, add(multiply(actualDay, 86400), openingTime));
 
         uint windowTimeLength;
-        if (closingTime >= openingTime) {
-            windowTimeLength = closingTime - openingTime;
+        if ( closingTime >= openingTime ) {
+            windowTimeLength = subtract(closingTime, openingTime);
         } else {
-            windowTimeLength = 86400 + closingTime - openingTime;
+            windowTimeLength = subtract(add(86400, closingTime), openingTime);
         }
 
         if (canceled) return false;
@@ -609,15 +618,15 @@ contract VaultController is VaultControllerI {
             dayOfLastTx = actualDay;
         }
         // Checks on the transaction limits
-        if (accAmountInDay + _amount < accAmountInDay) throw; // Overflow
-        if (accAmountInDay + _amount > dailyAmountLimit) return false;
+        if (add(accAmountInDay, _amount) < accAmountInDay) throw; // Overflow
+        if (add(accAmountInDay, _amount) > dailyAmountLimit) return false;
         if (accTxsInDay >= dailyTxnLimit) return false;
         if (_amount > txnAmountLimit) return false;
         if (timeSinceOpening >= windowTimeLength) return false;
 
         // Counting daily transactions and total amount spent in one day
-        accAmountInDay += _amount;
-        accTxsInDay ++;
+        accAmountInDay = add(accAmountInDay, _amount);
+        accTxsInDay = add(accTxsInDay, 1);
 
         return true;
     }
@@ -625,19 +634,21 @@ contract VaultController is VaultControllerI {
     /// @notice Checks that the transaction limits in the primaryVault are followed
     ///  called every time the primaryVault sends `baseTokens`
     function checkSpenderTransfer(Spender storage spender, address _recipient, uint _amount) internal returns (bool) {
-        uint actualDay = now / 86400;       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
+        uint actualDay = divide(now, 86400);       //Number of days since Jan 1, 1970 (UTC Timezone) fractional remainder discarded
         uint actualTime = now % 86400;  //Number of seconds since midnight (UTC Timezone)
 
-        if (actualTime < spender.openingTime) actualDay--; // adjusts day to start at `mainopeningTime`
+        if (actualTime < spender.openingTime) {
+            actualDay = subtract(actualDay, 1); // adjusts day to start at `mainopeningTime`
+        }
 
-        uint timeSinceOpening = now - (actualDay * 86400 + spender.openingTime);
+        uint timeSinceOpening = subtract(now, add(multiply(actualDay, 86400), spender.openingTime));
 
         uint windowTimeLength;
 
         if (spender.closingTime >= spender.openingTime) {
-            windowTimeLength = spender.closingTime - spender.openingTime;
+            windowTimeLength = subtract(spender.closingTime, spender.openingTime);    
         } else {
-            windowTimeLength = 86400 + spender.closingTime - spender.openingTime;
+            windowTimeLength = subtract(add(86400,spender.closingTime), spender.openingTime);
         }
 
         // Resets the daily transfer counters
@@ -648,8 +659,8 @@ contract VaultController is VaultControllerI {
         }
 
         // Checks on the transaction limits
-        if (spender.accAmountInDay + _amount < spender.accAmountInDay) throw; // Overflow
-        if (spender.accAmountInDay + _amount > spender.dailyAmountLimit) return false;
+        if (add(spender.accAmountInDay, _amount) < spender.accAmountInDay) throw; // Overflow
+        if (add(spender.accAmountInDay, _amount) > spender.dailyAmountLimit) return false;
         if (spender.accTxsInDay >= spender.dailyTxnLimit) return false;
         if (_amount > spender.txnAmountLimit) return false;
         if (timeSinceOpening >= windowTimeLength) return false;
@@ -659,7 +670,7 @@ contract VaultController is VaultControllerI {
 
         uint idRecipient = spender.addr2recipientId[_recipient];
         if (idRecipient == 0) return false; // already unauthorized
-        idRecipient--;
+        idRecipient = subtract(idRecipient, 1);
 
         Recipient r = spender.recipients[idRecipient];
 
@@ -673,8 +684,8 @@ contract VaultController is VaultControllerI {
         }
 
 
-        spender.accAmountInDay += _amount;
-        spender.accTxsInDay ++;
+        spender.accAmountInDay = add(spender.accAmountInDay,_amount);
+        spender.accTxsInDay = add(spender.accTxsInDay, 1);
 
         return true;
     }
@@ -724,7 +735,7 @@ contract VaultController is VaultControllerI {
 
     function getGeneration() constant returns (uint) {
         if (address(parentVaultController) != 0) {
-            return parentVaultController.getGeneration() + 1;
+            return add(parentVaultController.getGeneration(), 1);
         } else {
             return 1;
         }
@@ -753,8 +764,3 @@ contract VaultController is VaultControllerI {
         uint lowestAcceptableBalance
     );
 }
-
-
-
-
-
